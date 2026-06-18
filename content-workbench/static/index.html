@@ -29,13 +29,13 @@
     }
     .app {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 280px;
-      grid-template-areas: "main settings";
+      grid-template-columns: 280px minmax(0, 1fr);
+      grid-template-areas: "settings main";
       min-height: 100vh;
     }
     aside {
       grid-area: settings;
-      border-left: 1px solid var(--line);
+      border-right: 1px solid var(--line);
       background: #eef2f6;
       padding: 16px;
       overflow: auto;
@@ -261,7 +261,7 @@
       .app { display: flex; flex-direction: column; }
       main { order: 1; }
       aside { order: 2; }
-      aside { border-left: 0; border-bottom: 1px solid var(--line); }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); }
       .content { grid-template-columns: 1fr; }
       header { height: auto; min-height: 58px; align-items: flex-start; flex-direction: column; padding: 12px 14px; }
     }

@@ -4,7 +4,7 @@
 Turn the existing Content Creator Pipeline skill bundle into a beginner-friendly local script workflow assistant for inspiration capture, spark solidification, review, scoring, prediction, video-script writing, and text/static-page material generation.
 
 ## Current Phase
-Original Function-Block Layout Restored
+Left Settings Layout Verified
 
 ## Phases
 
@@ -76,7 +76,15 @@ Original Function-Block Layout Restored
 - [x] Verify the served HTML contains `引导流程`, `素材与产物`, and `基础设置`, and no longer contains `6 步内容流程`, `灵感库`, or `nextCard`.
 - **Status:** complete
 
-### Phase 9: Post-MVP Hardening
+### Phase 9: Layout Position Adjustment
+- [x] Create a Git baseline commit before changing layout.
+- [x] Move `基础设置/授权` to the left sidebar.
+- [x] Keep `引导流程` in the middle.
+- [x] Keep `素材与产物` on the right.
+- [x] Verify the actual browser element order is left settings -> middle guide -> right materials.
+- **Status:** complete
+
+### Phase 10: Post-MVP Hardening
 - [ ] Replace the local cloud mock with a deployed queue/subscription service.
 - [ ] Verify live LLM calls against the user's selected OpenAI-compatible provider and document provider quirks.
 - [ ] Add Windows service/installer packaging with upgrade-safe data preservation.

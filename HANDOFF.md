@@ -9,7 +9,7 @@ Build a beginner-friendly local-first content creator agent product from the exi
 - The local desktop workbench is running at `http://127.0.0.1:7870`.
 - The local cloud mock is running at `http://127.0.0.1:8787`.
 - The default content project path is `%USERPROFILE%\.content-workbench\projects\default-content-project`, not the source skill bundle.
-- The first visible desktop/browser surface is restored to the original function-block layout: `引导流程`, `素材与产物`, and a settings sidebar.
+- The first visible desktop/browser surface is the original function-block layout with `基础设置/授权` on the left, `引导流程` in the middle, and `素材与产物` on the right.
 - `content-workbench/main.py` has explicit route-priority handling, and the running `7870` Python process has been restarted so the backend change is live.
 
 ## Product Decisions

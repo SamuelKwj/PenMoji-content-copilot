@@ -210,6 +210,22 @@
   - `progress.md`
   - `HANDOFF.md`
 
+### Phase 9: Layout Position Adjustment
+- **Status:** complete
+- Actions taken:
+  - Initialized a project-local Git repository in `C:\Users\samue\Documents\内容生产agent`.
+  - Created baseline commit `f93f9ab chore: snapshot before layout adjustment`.
+  - Changed only layout CSS so `基础设置/授权` moves to the left, while `引导流程` stays in the middle and `素材与产物` stays on the right.
+- Verification:
+  - Playwright verified actual desktop order by bounding boxes: settings `x=0`, guide `x=294`, materials `x=878.890625`.
+  - Playwright verified `基础设置`, `引导流程`, and `素材与产物` are visible with no console errors.
+  - `GET /api/status` returned `status=ok` on `http://127.0.0.1:7870`.
+- Files created/modified:
+  - `.gitignore`
+  - `content-workbench/static/index.html`
+  - `task_plan.md`
+  - `progress.md`
+
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|
@@ -223,7 +239,7 @@
 ## 5-Question Reboot Check
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phase 8 follow-up restore is complete: the visible UI is back to the original function-block layout, with the backend route-priority bug fix preserved. |
+| Where am I? | Phase 9 layout adjustment is complete: settings/auth on the left, guide in the middle, materials/products on the right. |
 | Where am I going? | Future UI work should tune colors, spacing, component polish, hover/active states, and subtle interaction feedback without restructuring function blocks. |
 | What's the goal? | Productize the content pipeline into a local-first script workflow agent with mobile inspiration sync. |
 | What have I learned? | See `findings.md`. |
