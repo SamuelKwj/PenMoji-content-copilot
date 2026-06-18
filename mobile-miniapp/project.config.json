@@ -1,0 +1,16 @@
+{
+  "description": "Content Workbench mobile inspiration capture MVP",
+  "packOptions": {
+    "ignore": []
+  },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": true,
+    "minified": true
+  },
+  "compileType": "miniprogram",
+  "appid": "touristappid",
+  "projectname": "content-workbench-mobile-mvp",
+  "condition": {}
+}

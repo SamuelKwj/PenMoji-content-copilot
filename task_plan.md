@@ -1,0 +1,119 @@
+# Task Plan: Content Creator Agent Productization
+
+## Goal
+Turn the existing Content Creator Pipeline skill bundle into a beginner-friendly local script workflow assistant for inspiration capture, spark solidification, review, scoring, prediction, video-script writing, and text/static-page material generation.
+
+## Current Phase
+Original Function-Block Layout Restored
+
+## Phases
+
+### Phase 1: Product Direction & Scope
+- [x] Lock product shape: desktop local agent workbench plus mini-program inspiration entry.
+- [x] Define mini-program boundary: quick inspiration capture and sync only, not full AI workbench.
+- [x] Define cloud boundary: account, subscription/license, inspiration queue, version metadata.
+- [x] Define v1 model-cost boundary: BYOK by default.
+- [x] Define production boundary: no video rendering/export; the core output is video scripts plus text/static-page materials.
+- **Status:** complete
+
+### Phase 2: Local Desktop Workbench
+- [x] Create `content-workbench/`.
+- [x] Add a local HTTP service on `127.0.0.1:7870`.
+- [x] Add browser UI for chat, config, inbox, files, sync, and license status.
+- [x] Persist config, conversations, inbox data, and content projects under `%USERPROFILE%\.content-workbench`.
+- [x] Preserve existing secrets when the UI posts masked values.
+- **Status:** complete
+
+### Phase 3: Mobile & Cloud Sync MVP
+- [x] Define the mini-program inspiration item schema.
+- [x] Add a minimal WeChat Mini Program project for mobile inspiration capture.
+- [x] Define mobile/cloud API contracts.
+- [x] Add a local cloud mock for mobile submission, desktop pull, ack, device binding, and subscription status.
+- [x] Add desktop cloud pull from `cloud.base_url`.
+- [x] Add `run-mvp.bat` to launch the local desktop workbench and cloud mock together.
+- **Status:** complete
+
+### Phase 4: Agent Production MVP
+- [x] Add guided workflow routing for spark solidification, review, score, prediction, script, and static-page materials.
+- [x] Add OpenAI-compatible LLM orchestration path using saved `api_base_url`, `api_key`, and `model`.
+- [x] Keep deterministic local fallback when no API key is configured.
+- [x] Generate markdown artifacts for spark cards, review, score, prediction, video scripts, title/publish text, and static-page copy.
+- [x] Add inbox-to-workflow action so synced mobile inspirations start at spark solidification.
+- [x] Prevent generic ideas and "full package" language from producing all materials at once.
+- **Status:** complete
+
+### Phase 5: MVP Verification
+- [x] Syntax-check Python services.
+- [x] Start desktop and cloud mock services.
+- [x] Verify desktop core API endpoints.
+- [x] Verify mobile cloud submission -> desktop pull -> cloud ack -> local inbox.
+- [x] Verify chat and inbox production create artifact files.
+- [x] Verify cloud-backed license status and device binding.
+- **Status:** complete
+
+### Phase 6: Beginner Workflow Simplification
+- [x] Simplify the UI around "灵感到脚本" instead of a developer-style control console.
+- [x] Rename visible workspace concepts to beginner-facing labels: 引导流程、灵感、手机同步、产物.
+- [x] Hide developer debug tab from the default UI.
+- [x] Show Chinese workflow stage labels instead of raw route ids.
+- [x] Add a "继续：下一步" action after each workflow response.
+- [x] Ensure explicit review/score/prediction/script requests each produce only that current step.
+- **Status:** complete
+
+### Phase 7: Message/UI Cleanup
+- [x] Inspect the in-app browser for misleading old MVP/test messages.
+- [x] Hide processed inbox history from the default inspiration list.
+- [x] Move the guided workflow to the first visible surface in the local browser.
+- [x] Strip workflow command prefixes from generated artifact folder names.
+- [x] Verify "full package" wording only starts the guided workflow and does not generate all outputs.
+- **Status:** complete
+
+### Phase 8: UI Direction Correction
+- [x] Revert the mistaken three-column Notion/Taskade workflow-board UI.
+- [x] Restore the previous function-block layout: guided workflow, materials/products panel, and settings sidebar.
+- [x] Keep the beginner-facing labels and step-by-step reply actions from Phase 6/7.
+- [x] Preserve the backend route-priority bug fix so explicit workflow actions are not hijacked by topic keywords.
+- [x] Verify the served HTML contains `引导流程`, `素材与产物`, and `基础设置`, and no longer contains `6 步内容流程`, `灵感库`, or `nextCard`.
+- **Status:** complete
+
+### Phase 9: Post-MVP Hardening
+- [ ] Replace the local cloud mock with a deployed queue/subscription service.
+- [ ] Verify live LLM calls against the user's selected OpenAI-compatible provider and document provider quirks.
+- [ ] Add Windows service/installer packaging with upgrade-safe data preservation.
+- [ ] Add production license verification, offline token signing, and renewal behavior.
+- [ ] Expand router fidelity for blind scoring, prediction immutability, publish registration, and retro flows.
+- **Status:** pending
+
+## Key Questions
+1. Should the mini-program be a full AI workbench? Answer: no, it is only a quick inspiration capture and sync entry.
+2. Should v1 be SaaS-first? Answer: no, v1 is local-first with light cloud for sync and subscription.
+3. Who pays LLM inference costs? Answer: v1 defaults to BYOK, so users provide their own OpenAI-compatible API key.
+4. Where should user data live? Answer: outside the app folder, under `%USERPROFILE%\.content-workbench`, so upgrades can preserve it.
+5. Does the product generate finished video? Answer: no, it stops at video script and text/static-page materials.
+
+## Decisions Made
+| Decision | Rationale |
+|----------|-----------|
+| Local Windows-first script workflow assistant | Matches the desired lightweight local product without taking on heavy SaaS inference cost. |
+| Mini-program as inspiration inbox only | Avoids remote-control complexity and keeps mobile UX simple. |
+| Light cloud layer only | Keeps operating cost low while still supporting login, subscription, sync, and versioning. |
+| BYOK for v1 LLM calls | Avoids taking on model inference cost before the product is validated. |
+| Standard-library Python services for MVP | Keeps the local MVP runnable without dependency installation. |
+| Store app data in `%USERPROFILE%\.content-workbench` | Keeps user data outside the install directory and safer across upgrades. |
+| Default content project under `%USERPROFILE%\.content-workbench\projects` | Keeps user-generated inbox/archive data out of the source skill bundle. |
+| Guided workflow instead of multi-button production | The target user is a beginner who needs step-by-step guidance, not a Hermes-style command surface. |
+| Video script only, no video rendering/export | The core business is content decisioning and script/static-text production, not finished video generation. |
+
+## Product Risks
+| Risk | Mitigation |
+|------|------------|
+| Live LLM provider behavior is unverified without a real user API key | The OpenAI-compatible code path exists; verify with the user's selected provider during provider setup. |
+| Cloud sync currently uses a local mock | Replace it with a deployed queue/subscription service after MVP acceptance. |
+| Mini-program has only static/devtool validation | Import `mobile-miniapp/` in WeChat DevTools for real device/devtool acceptance. |
+| License behavior is mock-backed | Next pass connects to a production subscription/license backend. |
+| Desktop packaging is not implemented | Next pass adds Windows service and installer work. |
+
+## Notes
+- The current workbench is an executable local MVP for guided script workflow, not the full commercial product.
+- Future work should keep the desktop app as the heavy workflow surface and the mini-program as the light capture surface.
+- Do not expand v1 into video rendering/export or a heavy SaaS generation backend unless the product direction changes explicitly.

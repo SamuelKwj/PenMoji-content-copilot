@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.playwright/
+node_modules/
+dist/
+build/
+*.log
