@@ -226,6 +226,33 @@
   - `task_plan.md`
   - `progress.md`
 
+### Phase 10: Clean Entry UI
+- **Status:** complete
+- Actions taken:
+  - Created rollback tag `before-clean-ui-entry-rework` before the larger UI entry redesign.
+  - Removed persistent settings/sidebar form from the main canvas and moved model/sync/storage/license settings behind a top-right gear modal.
+  - Removed visible `内容形态`, `平台`, and `赛道/人设` form fields from the main UI; the dialogue now tells users to provide those details naturally in chat.
+  - Replaced the left rail with a scored `火花看板`.
+  - Rebuilt the center as a fixed `引导对话` panel with a single conversation surface and quick chips.
+  - Replaced the tabbed right panel with `素材选择` cards; clicking a material inserts it into the dialogue input.
+  - Added a `产出看板` for generated local files.
+  - Added Escape-key closing for the settings modal.
+  - Adjusted backend routing so `口播内容` as positioning context no longer triggers video-script generation, while explicit `写视频脚本` / `口播脚本` / `口播稿` still do.
+- Verification:
+  - Served HTML contains `火花看板`, `引导对话`, `素材选择`, `产出看板`, and `openSettings`.
+  - Served HTML no longer contains persistent `基础设置</h2>`, `素材与产物`, `contentType`, or `nextCard`.
+  - Runtime API check: `测试灵感：...平台抖音，口播内容` -> `spark_solidify`, `spark_card`, next `审核`.
+  - Runtime API check: `写视频脚本：...` -> `video_script`, next `静态页文案`.
+  - Playwright desktop check confirmed gear modal, Escape close, scored spark cards, material click into dialogue input, output board, no persistent settings form, and no console errors.
+  - Playwright mobile check confirmed `火花看板`, `引导对话`, `素材选择`, `产出看板`, gear entry, Escape close, and no console errors.
+- Files created/modified:
+  - `content-workbench/main.py`
+  - `content-workbench/static/index.html`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+  - `HANDOFF.md`
+
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|
@@ -239,8 +266,8 @@
 ## 5-Question Reboot Check
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phase 9 layout adjustment is complete: settings/auth on the left, guide in the middle, materials/products on the right. |
-| Where am I going? | Future UI work should tune colors, spacing, component polish, hover/active states, and subtle interaction feedback without restructuring function blocks. |
+| Where am I? | Phase 10 clean-entry UI is complete: settings are behind the gear, left is a scored spark board, center is a fixed dialogue, and right is material selection plus output board. |
+| Where am I going? | Next product work can polish visual details or move to post-MVP hardening: deployed sync/subscription, real provider verification, installer/service packaging, and license behavior. |
 | What's the goal? | Productize the content pipeline into a local-first script workflow agent with mobile inspiration sync. |
 | What have I learned? | See `findings.md`. |
-| What have I done? | Built and verified a local MVP, corrected the accidental structural UI redesign, restored the prior function-block layout, and preserved the explicit route-priority bug fix. |
+| What have I done? | Built and verified a local MVP, added Git rollback points, cleaned up the main UI entrances, moved settings behind a gear, added scored spark/material/output boards, and preserved/fixed routing behavior. |

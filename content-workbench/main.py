@@ -246,7 +246,7 @@ def route_deliverables(message: str) -> tuple[str, list[str]]:
         (r"^(审核|审稿|验证|判断|检查)", "on_demand_production", ["review"]),
         (r"^(评分|打分|给.*评分|给.*打分)", "on_demand_production", ["score"]),
         (r"^(预测|预判)", "on_demand_production", ["prediction"]),
-        (r"^(写.*脚本|生成.*脚本|视频脚本|口播脚本)", "on_demand_production", ["video_script"]),
+        (r"^(写.*脚本|生成.*脚本|视频脚本|口播脚本|口播稿)", "on_demand_production", ["video_script"]),
         (r"^(标题|封面|发布文案|简介|话题|评论区)", "on_demand_production", ["text_pack"]),
         (r"^(生成.*静态页|静态页|图文页|卡片文案|轮播)", "on_demand_production", ["static_page"]),
     ]
@@ -265,7 +265,7 @@ def route_deliverables(message: str) -> tuple[str, list[str]]:
         deliverables.append("score")
     if any(token in text for token in ["预测", "预判", "爆款", "播放"]):
         deliverables.append("prediction")
-    if any(token in text for token in ["脚本", "口播"]):
+    if any(token in text for token in ["脚本", "口播脚本", "口播稿"]):
         deliverables.append("video_script")
     if any(token in text for token in ["标题", "封面", "发布文案", "简介", "话题", "评论区"]):
         deliverables.append("text_pack")

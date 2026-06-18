@@ -4,7 +4,7 @@
 Turn the existing Content Creator Pipeline skill bundle into a beginner-friendly local script workflow assistant for inspiration capture, spark solidification, review, scoring, prediction, video-script writing, and text/static-page material generation.
 
 ## Current Phase
-Left Settings Layout Verified
+Clean Entry UI Verified
 
 ## Phases
 
@@ -84,7 +84,18 @@ Left Settings Layout Verified
 - [x] Verify the actual browser element order is left settings -> middle guide -> right materials.
 - **Status:** complete
 
-### Phase 10: Post-MVP Hardening
+### Phase 10: Clean Entry UI
+- [x] Create rollback tag `before-clean-ui-entry-rework` before the larger UI entry redesign.
+- [x] Move one-time settings and authorization behind a top-right gear button.
+- [x] Remove persistent content-shape/platform/niche form fields from the visible UI; these are now handled in the guided dialogue copy/chips.
+- [x] Replace the left settings rail with a `火花看板` showing incoming sparks with preliminary scores.
+- [x] Make the center `引导对话` a fixed full conversation panel.
+- [x] Replace the old tabbed materials panel with a `素材选择` list where clicked materials enter the dialogue box.
+- [x] Add a right-side `产出看板` for generated local files.
+- [x] Verify desktop and mobile UI with Playwright.
+- **Status:** complete
+
+### Phase 11: Post-MVP Hardening
 - [ ] Replace the local cloud mock with a deployed queue/subscription service.
 - [ ] Verify live LLM calls against the user's selected OpenAI-compatible provider and document provider quirks.
 - [ ] Add Windows service/installer packaging with upgrade-safe data preservation.

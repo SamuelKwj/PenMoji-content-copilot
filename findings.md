@@ -23,6 +23,8 @@
 - A Notion/Taskade-style structural redesign was attempted, but the user clarified they wanted UI color/visual/interaction polish, not a functional-block restructure.
 - Future UI passes should preserve the current function blocks and improve palette, spacing, visual hierarchy, hover/active states, motion/feedback, and perceived polish.
 - Topic text can contain workflow-like words such as `验证`; route intent must prioritize the explicit command prefix (`固化这个灵感`, `审核这个灵感`, etc.) over keywords inside the topic.
+- The current accepted UI direction is "fewer entrances, cleaner page": one-time settings live behind a gear button; content positioning is captured through dialogue; the left rail is a scored spark board; the right rail is material selection plus output board.
+- Bare content-shape words such as `口播内容` should not route to script generation. Only explicit script intent such as `写视频脚本`, `口播脚本`, or `口播稿` should trigger the video-script step.
 
 ## Technical Decisions
 | Decision | Rationale |
@@ -41,6 +43,10 @@
 | Put the guided workflow before settings in the visible layout | Keeps the first interaction focused on business progress rather than configuration. |
 | Preserve existing function-block layout for UI polish | The user asked for color/interaction/visual improvements, not structural reorganization. |
 | Match explicit route prefixes before generic keyword scanning | Prevents topic content from hijacking the user's selected workflow step. |
+| Hide settings behind a gear entry | Model, sync, storage, and license settings are configured rarely and should not occupy constant page space. |
+| Move creator positioning into dialogue | Content form, platform, niche, and persona are part of guided context capture, not persistent form fields. |
+| Use a scored spark board for the left rail | New inspirations are recurring work items and need quick triage rather than a static settings/sidebar. |
+| Use material selection plus output board on the right | Materials can be clicked into the dialogue, while outputs are kept visible as generated assets. |
 
 ## Issues Encountered
 | Issue | Resolution |
@@ -55,6 +61,7 @@
 | Artifact folder names could inherit command prefixes like "全套物料" | Added topic prefix stripping before artifact directory creation. |
 | A topic containing `验证` caused the `灵感固化` button to route to review in the old backend | Updated `route_deliverables` so explicit command prefixes choose the step first, restarted the local service, and verified the running API/browser path. |
 | UI work drifted into changing the product's functional blocks | Reverted `static/index.html` to the prior function-block layout and documented that future UI work should stay visual/interaction-focused unless structure changes are explicitly requested. |
+| Dialogue text containing `口播内容` was routed to video script | Removed bare `口播` from generic script keywords; explicit `口播脚本` and `口播稿` still route to video script. |
 
 ## Resources
 - Existing pipeline root: `C:\Users\samue\Documents\内容生产agent\Content Creator Pipeline`
@@ -69,3 +76,5 @@
 - The served page no longer exposes `Agent Chat`, a visible `Debug` tab, `全套物料`, `生成视频`, `导出视频`, or `成片` text in the beginner UI.
 - Final runtime check after restarting `7870` confirmed clicking the first workflow step on a topic containing `验证` returns `灵感固化卡` and next step `审核`.
 - Restore check confirmed the served HTML contains `引导流程`, `素材与产物`, and `基础设置`, and no longer contains `6 步内容流程`, `灵感库`, or `nextCard`.
+- Final clean-entry UI check confirmed `火花看板`, `引导对话`, `素材选择`, `产出看板`, gear settings, Escape close, and material-to-dialogue insertion render/work on desktop/mobile with no console errors.
+- Runtime route check confirmed `测试灵感...平台抖音，口播内容` routes to spark solidification, while `写视频脚本...` still routes to video script.

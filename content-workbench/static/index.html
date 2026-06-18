@@ -8,396 +8,640 @@
   <style>
     :root {
       color-scheme: light;
-      --bg: #f6f7f9;
+      --bg: #f4f6f8;
       --panel: #ffffff;
-      --text: #20242b;
-      --muted: #667085;
-      --line: #d8dde6;
+      --panel-soft: #f8fafc;
+      --text: #1f2933;
+      --muted: #6b778c;
+      --line: #d8dee8;
       --accent: #0f766e;
-      --accent-2: #334155;
-      --warn: #a16207;
+      --accent-dark: #0b5f59;
+      --accent-soft: #e7f5f2;
+      --blue: #315fbd;
+      --amber: #b7791f;
       --good: #166534;
       --bad: #b42318;
+      --shadow: 0 10px 28px rgba(31, 41, 51, .07);
     }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
+      min-width: 320px;
       font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
       letter-spacing: 0;
     }
-    .app {
-      display: grid;
-      grid-template-columns: 280px minmax(0, 1fr);
-      grid-template-areas: "settings main";
-      min-height: 100vh;
-    }
-    aside {
-      grid-area: settings;
-      border-right: 1px solid var(--line);
-      background: #eef2f6;
-      padding: 16px;
-      overflow: auto;
-    }
-    main {
-      grid-area: main;
-      display: grid;
-      grid-template-rows: auto 1fr;
-      min-width: 0;
-    }
-    header {
-      height: 58px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--line);
-      background: var(--panel);
-      padding: 0 18px;
-    }
+
     h1, h2, h3, p { margin: 0; }
-    h1 { font-size: 18px; font-weight: 650; }
-    h2 { font-size: 14px; margin-bottom: 10px; }
-    h3 { font-size: 13px; margin-bottom: 8px; color: var(--accent-2); }
-    .muted { color: var(--muted); font-size: 12px; }
-    .section {
-      border-bottom: 1px solid var(--line);
-      padding: 14px 0;
-    }
-    .section:first-child { padding-top: 0; }
-    label {
-      display: block;
-      font-size: 12px;
-      color: var(--muted);
-      margin: 10px 0 5px;
-    }
-    input, textarea, select {
-      width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #fff;
-      color: var(--text);
-      padding: 8px 9px;
-      font: inherit;
-      font-size: 13px;
-    }
-    textarea {
-      min-height: 92px;
-      resize: vertical;
-    }
+    h1 { font-size: 20px; font-weight: 760; }
+    h2 { font-size: 15px; font-weight: 720; }
+    h3 { font-size: 13px; font-weight: 700; color: #334155; }
+
+    button, input, textarea { font: inherit; letter-spacing: 0; }
+
     button {
+      min-height: 34px;
       border: 1px solid var(--accent);
-      border-radius: 6px;
+      border-radius: 7px;
       background: var(--accent);
       color: #fff;
-      padding: 8px 10px;
+      padding: 7px 11px;
       font-size: 13px;
       cursor: pointer;
-      min-height: 34px;
+      transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
     }
+
+    button:hover {
+      background: var(--accent-dark);
+      border-color: var(--accent-dark);
+      box-shadow: 0 4px 12px rgba(15, 118, 110, .18);
+    }
+
+    button:active { transform: translateY(1px); }
+
     button.secondary {
       border-color: var(--line);
       background: #fff;
-      color: var(--accent-2);
+      color: #334155;
     }
-    button:disabled {
-      opacity: .55;
-      cursor: not-allowed;
+
+    button.secondary:hover {
+      border-color: #9fb2c7;
+      background: #f8fafc;
+      box-shadow: none;
     }
-    .content {
-      display: grid;
-      grid-template-columns: minmax(360px, 1.1fr) minmax(320px, .9fr);
-      gap: 14px;
-      padding: 14px;
-      min-height: 0;
+
+    button.icon {
+      display: inline-grid;
+      place-items: center;
+      width: 36px;
+      padding: 0;
+      font-size: 18px;
     }
-    .panel {
-      background: var(--panel);
+
+    input, textarea {
+      width: 100%;
       border: 1px solid var(--line);
       border-radius: 8px;
-      min-width: 0;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
+      background: #fff;
+      color: var(--text);
+      padding: 9px 10px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color .16s ease, box-shadow .16s ease;
     }
-    .panel-head {
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--line);
+
+    textarea {
+      min-height: 94px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    input:focus, textarea:focus {
+      border-color: #65aaa2;
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .11);
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin: 10px 0 5px;
+    }
+
+    [hidden] { display: none !important; }
+
+    .muted { color: var(--muted); font-size: 12px; }
+    .tiny { color: var(--muted); font-size: 11px; }
+    .good { color: var(--good); }
+    .warn { color: var(--amber); }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .topbar {
+      height: 62px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
+      gap: 16px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, .94);
+      backdrop-filter: blur(10px);
     }
-    .panel-body {
-      padding: 14px;
-      overflow: auto;
-      min-height: 0;
-    }
-    .chat-log {
-      min-height: 360px;
+
+    .brand {
       display: flex;
-      flex-direction: column;
+      align-items: center;
       gap: 10px;
+      min-width: 0;
     }
-    .message {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px;
-      background: #fff;
-      font-size: 13px;
-      white-space: pre-wrap;
-    }
-    .message.user {
-      border-color: #9ccbc6;
-      background: #effaf8;
-    }
-    .message.agent {
-      border-color: #cbd5e1;
-      background: #f8fafc;
-    }
-    .message-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 10px;
-    }
-    .message-actions button {
-      min-height: 30px;
-      padding: 6px 9px;
-      font-size: 12px;
-    }
-    .chat-input {
-      border-top: 1px solid var(--line);
-      padding: 12px;
+
+    .brand-mark {
       display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 8px;
-      background: #fbfcfd;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 800;
     }
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
+
+    .brand-copy {
+      min-width: 0;
     }
-    .stack {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+
+    .brand-copy .muted {
+      margin-top: 2px;
     }
-    .row {
+
+    .top-actions {
       display: flex;
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
+      justify-content: flex-end;
     }
+
     .pill {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       border: 1px solid var(--line);
       border-radius: 999px;
-      padding: 4px 8px;
-      font-size: 12px;
       background: #fff;
-    }
-    .status-ok { color: var(--good); }
-    .status-warn { color: var(--warn); }
-    [hidden] { display: none !important; }
-    pre {
-      margin: 0;
-      padding: 10px;
-      border-radius: 6px;
-      border: 1px solid var(--line);
-      background: #0f172a;
-      color: #e5e7eb;
-      overflow: auto;
+      padding: 4px 8px;
+      color: #334155;
       font-size: 12px;
-      line-height: 1.45;
+      white-space: nowrap;
     }
-    .list {
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 292px minmax(430px, 1fr) 320px;
+      gap: 14px;
+      padding: 14px;
+      min-height: 0;
+    }
+
+    .column {
+      min-width: 0;
+      min-height: 0;
       display: flex;
       flex-direction: column;
+      gap: 12px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-body {
+      padding: 13px 14px;
+    }
+
+    .spark-board,
+    .material-list,
+    .output-board {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      overflow: auto;
+    }
+
+    .spark-board { max-height: calc(100vh - 164px); }
+    .material-list { max-height: 38vh; }
+    .output-board { max-height: calc(62vh - 112px); }
+
+    .spark-card,
+    .material-card,
+    .output-card {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel-soft);
+      padding: 10px;
+      font-size: 13px;
+      transition: border-color .16s ease, background .16s ease, transform .16s ease;
+    }
+
+    .spark-card:hover,
+    .material-card:hover {
+      border-color: #96b8c7;
+      background: #fff;
+      transform: translateY(-1px);
+    }
+
+    .spark-card.active,
+    .material-card.active {
+      border-color: #68b8ad;
+      background: #eefbf8;
+    }
+
+    .spark-title,
+    .material-title {
+      margin-top: 6px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .score-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 8px;
     }
-    .list-item {
+
+    .score-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 45px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: #fff;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-      padding: 9px;
-      font-size: 13px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 740;
     }
-    .item-actions {
+
+    .chat-panel {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      height: calc(100vh - 90px);
+    }
+
+    .chat-log {
       display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      margin-top: 8px;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px;
+      overflow: auto;
+      background:
+        linear-gradient(#fff, #fff) padding-box,
+        linear-gradient(180deg, rgba(15,118,110,.08), rgba(49,95,189,.05)) border-box;
     }
-    .item-actions button {
+
+    .message {
+      max-width: min(760px, 92%);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 11px 12px;
+      background: #fff;
+      font-size: 14px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      box-shadow: 0 4px 12px rgba(31, 41, 51, .04);
+    }
+
+    .message.user {
+      align-self: flex-end;
+      border-color: #87c7bc;
+      background: #effaf8;
+    }
+
+    .message.agent {
+      align-self: flex-start;
+      background: #fbfdff;
+    }
+
+    .message-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .message-actions button {
+      min-height: 30px;
+      padding: 5px 9px;
+      font-size: 12px;
+    }
+
+    .chat-input {
+      border-top: 1px solid var(--line);
+      padding: 12px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      background: #fbfcfd;
+    }
+
+    .chat-input textarea {
+      min-height: 82px;
+      max-height: 180px;
+    }
+
+    .quick-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 9px;
+    }
+
+    .quick-chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: #334155;
       min-height: 28px;
-      padding: 5px 8px;
+      padding: 4px 10px;
       font-size: 12px;
     }
-    .item-meta {
-      color: var(--muted);
-      font-size: 12px;
-      margin-bottom: 4px;
-    }
-    .tabs {
+
+    .tabs-lite {
       display: flex;
-      gap: 6px;
+      gap: 7px;
       flex-wrap: wrap;
     }
-    .tabs button {
-      background: #fff;
-      border-color: var(--line);
-      color: var(--accent-2);
+
+    .tabs-lite button {
+      min-height: 30px;
+      padding: 5px 9px;
+      font-size: 12px;
     }
-    .tabs button.active {
+
+    .tabs-lite button.active {
+      background: var(--accent);
       border-color: var(--accent);
       color: #fff;
-      background: var(--accent);
     }
-    @media (max-width: 920px) {
-      .app { display: flex; flex-direction: column; }
-      main { order: 1; }
-      aside { order: 2; }
-      aside { border-right: 0; border-bottom: 1px solid var(--line); }
-      .content { grid-template-columns: 1fr; }
-      header { height: auto; min-height: 58px; align-items: flex-start; flex-direction: column; padding: 12px 14px; }
+
+    .path {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      background: rgba(15, 23, 42, .28);
+      padding: 16px;
+    }
+
+    .settings-modal {
+      width: min(560px, 100%);
+      max-height: min(760px, 92vh);
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 24px 72px rgba(15, 23, 42, .24);
+    }
+
+    .settings-body {
+      padding: 14px 16px 16px;
+    }
+
+    .settings-section {
+      border-top: 1px solid var(--line);
+      padding-top: 13px;
+      margin-top: 13px;
+    }
+
+    .settings-section:first-child {
+      border-top: 0;
+      padding-top: 0;
+      margin-top: 0;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 1120px) {
+      .workspace {
+        grid-template-columns: 260px minmax(420px, 1fr);
+      }
+      .right-column {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+      .material-list,
+      .output-board {
+        max-height: 360px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .topbar {
+        height: auto;
+        min-height: 62px;
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 12px 14px;
+      }
+      .top-actions {
+        justify-content: flex-start;
+      }
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+      .right-column {
+        display: flex;
+      }
+      .chat-panel {
+        height: min(720px, calc(100vh - 94px));
+      }
+      .chat-input {
+        grid-template-columns: 1fr;
+      }
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
   <div class="app">
-    <aside>
-      <div class="section">
-        <h1>灵感到脚本</h1>
-        <p class="muted" id="statusText">连接中</p>
-      </div>
-
-      <div class="section">
-        <h2>基础设置</h2>
-        <label for="apiBase">API Base URL</label>
-        <input id="apiBase" autocomplete="off">
-        <label for="apiKey">API Key</label>
-        <input id="apiKey" type="password" autocomplete="off">
-        <label for="model">Model</label>
-        <input id="model" autocomplete="off">
-        <label for="projectPath">产物保存位置</label>
-        <input id="projectPath" autocomplete="off">
-        <label for="cloudBase">手机同步地址</label>
-        <input id="cloudBase" placeholder="http://127.0.0.1:8787" autocomplete="off">
-        <div style="height:10px"></div>
-        <button class="secondary" id="linkDevice">绑定本机</button>
-        <div class="grid">
-          <div>
-            <label for="contentType">内容形态</label>
-            <input id="contentType" placeholder="口播/图文/播客">
-          </div>
-          <div>
-            <label for="platform">平台</label>
-            <input id="platform" placeholder="douyin">
-          </div>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">写</div>
+        <div class="brand-copy">
+          <h1>灵感到脚本</h1>
+          <p class="muted">少入口、先对话、再沉淀成火花和产出。</p>
         </div>
-        <label for="niche">赛道/人设</label>
-        <input id="niche" placeholder="例如：商业诊断、个人IP">
-        <div style="height:10px"></div>
-        <button id="saveConfig">保存配置</button>
-        <button class="secondary" id="testModel">测试模型</button>
       </div>
-
-      <div class="section">
-        <h2>授权</h2>
-        <p class="muted" id="licenseText">读取中</p>
-        <label for="licenseToken">License Token</label>
-        <input id="licenseToken" type="password" autocomplete="off">
-        <div style="height:10px"></div>
-        <button class="secondary" id="activateLicense">激活</button>
+      <div class="top-actions">
+        <span class="pill" id="versionPill">v0.1.0</span>
+        <span class="pill" id="statusText">连接中</span>
+        <button class="secondary" id="refreshAll">刷新</button>
+        <button class="secondary icon" id="openSettings" title="设置" aria-label="设置">⚙</button>
       </div>
-    </aside>
+    </header>
 
-    <main>
-      <header>
-        <div>
-          <h1>脚本工作流助手</h1>
-          <p class="muted">灵感固化 -> 审核 -> 评分 -> 预测 -> 视频脚本 -> 静态页文字。</p>
-        </div>
-        <div class="row">
-          <span class="pill" id="versionPill">v0.1.0</span>
-          <button class="secondary" id="refreshAll">刷新</button>
-        </div>
-      </header>
-
-      <div class="content">
+    <div class="workspace">
+      <aside class="column left-column">
         <section class="panel">
           <div class="panel-head">
             <div>
-              <h2>引导流程</h2>
-              <p class="muted">先丢一个灵感，我会按流程一步一步带你走。</p>
+              <h2>火花看板</h2>
+              <p class="muted">灵感会先进入这里，带一个初步评分。</p>
+            </div>
+            <span class="pill" id="sparkCount">0 条</span>
+          </div>
+          <div class="panel-body">
+            <div class="spark-board" id="sparkBoard"></div>
+          </div>
+        </section>
+      </aside>
+
+      <main class="column">
+        <section class="panel chat-panel">
+          <div class="panel-head">
+            <div>
+              <h2>引导对话</h2>
+              <p class="muted">内容形态、平台、赛道、人设都直接在对话里说。</p>
             </div>
           </div>
-          <div class="panel-body chat-log" id="chatLog"></div>
+          <div class="chat-log" id="chatLog"></div>
           <div class="chat-input">
-            <textarea id="chatInput" placeholder="输入一个灵感火花，例如：普通人为什么做个人IP总是半途而废"></textarea>
+            <div>
+              <textarea id="chatInput" placeholder="输入灵感，或直接说：我是做个人IP口播，平台抖音，赛道是商业诊断，帮我固化这个选题..."></textarea>
+              <div class="quick-row">
+                <button class="quick-chip" data-prompt="我是做口播内容，平台抖音，赛道是个人IP，请先记住这个定位。">补充定位</button>
+                <button class="quick-chip" data-prompt="固化这个灵感：">固化灵感</button>
+                <button class="quick-chip" data-prompt="审核这个灵感：">审核</button>
+                <button class="quick-chip" data-prompt="写视频脚本：">写脚本</button>
+              </div>
+            </div>
             <button id="sendChat">发送</button>
           </div>
         </section>
+      </main>
+
+      <aside class="column right-column">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>素材选择</h2>
+              <p class="muted">点击素材，会进入对话框。</p>
+            </div>
+            <div class="tabs-lite">
+              <button class="active" data-material-tab="inbox">灵感</button>
+              <button data-material-tab="mobile">手机</button>
+              <button data-material-tab="files">文件</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="material-list" id="materialList"></div>
+          </div>
+        </section>
 
         <section class="panel">
           <div class="panel-head">
             <div>
-              <h2>素材与产物</h2>
-              <p class="muted">手机灵感、同步状态和已生成文件。</p>
+              <h2>产出看板</h2>
+              <p class="muted">已生成内容会沉淀在这里。</p>
             </div>
-            <div class="tabs">
-              <button class="active" data-tab="inbox">灵感</button>
-              <button data-tab="sync">手机同步</button>
-              <button data-tab="files">产物</button>
-            </div>
+            <button class="secondary" id="loadFiles">刷新</button>
           </div>
           <div class="panel-body">
-            <div id="tab-inbox" class="stack">
-              <div class="row">
-                <button class="secondary" id="loadInbox">刷新灵感</button>
-              </div>
-              <div class="list" id="inboxList"></div>
-            </div>
-
-            <div id="tab-sync" class="stack" hidden>
-              <h3>手机灵感同步</h3>
-              <button class="secondary" id="pullCloud">同步手机灵感</button>
-              <label for="syncContent">灵感内容</label>
-              <textarea id="syncContent" placeholder="手机里随手记下的一条灵感"></textarea>
-              <label for="syncTags">标签，逗号分隔</label>
-              <input id="syncTags" placeholder="选题,个人IP">
-              <button id="syncOne">加入电脑灵感箱</button>
-            </div>
-
-            <div id="tab-files" class="stack" hidden>
-              <div class="row">
-                <button class="secondary" id="loadFiles">刷新产物</button>
-              </div>
-              <div class="list" id="fileList"></div>
-            </div>
-
-            <div id="tab-debug" class="stack" hidden>
-              <pre id="debugOutput">{}</pre>
-            </div>
+            <div class="output-board" id="outputBoard"></div>
           </div>
         </section>
-      </div>
-    </main>
+      </aside>
+    </div>
   </div>
+
+  <div class="modal-backdrop" id="settingsBackdrop" hidden>
+    <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="panel-head">
+        <div>
+          <h2 id="settingsTitle">设置</h2>
+          <p class="muted" id="licenseText">读取中</p>
+        </div>
+        <button class="secondary" id="closeSettings">关闭</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-section">
+          <h3>模型与保存位置</h3>
+          <label for="apiBase">API Base URL</label>
+          <input id="apiBase" autocomplete="off">
+          <label for="apiKey">API Key</label>
+          <input id="apiKey" type="password" autocomplete="off">
+          <label for="model">Model</label>
+          <input id="model" autocomplete="off">
+          <label for="projectPath">产物保存位置</label>
+          <input id="projectPath" autocomplete="off">
+          <div class="quick-row">
+            <button id="saveConfig">保存配置</button>
+            <button class="secondary" id="testModel">测试模型</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>手机同步</h3>
+          <label for="cloudBase">手机同步地址</label>
+          <input id="cloudBase" placeholder="http://127.0.0.1:8787" autocomplete="off">
+          <div class="quick-row">
+            <button class="secondary" id="linkDevice">绑定本机</button>
+            <button class="secondary" id="pullCloud">拉取手机灵感</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>授权</h3>
+          <label for="licenseToken">License Token</label>
+          <input id="licenseToken" type="password" autocomplete="off">
+          <div class="quick-row">
+            <button class="secondary" id="activateLicense">激活</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <pre id="debugOutput" hidden>{}</pre>
 
   <script>
     const $ = (id) => document.getElementById(id);
-    let appConfig = {};
     const STAGE_LABELS = {
       spark_solidify: "灵感固化",
       guided_workflow: "从第一步开始",
       on_demand_production: "当前步骤",
       deliverable_selection: "选择下一步"
     };
+
+    let appConfig = {};
+    let inboxItems = [];
+    let fileGroups = {};
+    let materialTab = "inbox";
+    let selectedMaterial = "";
+    let localSparks = [];
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -413,7 +657,36 @@
 
     function setStatus(text, ok = true) {
       $("statusText").textContent = text;
-      $("statusText").className = ok ? "muted status-ok" : "muted status-warn";
+      $("statusText").className = ok ? "pill good" : "pill warn";
+    }
+
+    async function loadStatus() {
+      const status = await api("/api/status");
+      $("versionPill").textContent = `v${status.version}`;
+      setStatus("服务正常");
+    }
+
+    async function loadConfig() {
+      appConfig = await api("/api/config");
+      $("apiBase").value = appConfig.api_base_url || "";
+      $("apiKey").value = appConfig.api_key || "";
+      $("model").value = appConfig.model || "";
+      $("projectPath").value = appConfig.content_project_path || "";
+      $("cloudBase").value = appConfig.cloud?.base_url || "";
+      $("licenseText").textContent = `授权：${appConfig.license?.status || "trial"}，离线宽限 ${appConfig.license?.offline_grace_days || 7} 天`;
+    }
+
+    async function saveConfig() {
+      const payload = {
+        api_base_url: $("apiBase").value.trim(),
+        api_key: $("apiKey").value.trim(),
+        model: $("model").value.trim(),
+        content_project_path: $("projectPath").value.trim(),
+        cloud: { base_url: $("cloudBase").value.trim() }
+      };
+      await api("/api/config", { method: "POST", body: JSON.stringify(payload) });
+      await loadConfig();
+      setStatus("配置已保存");
     }
 
     function addMessage(role, text, actions = []) {
@@ -427,10 +700,7 @@
           const button = document.createElement("button");
           button.className = "secondary";
           button.textContent = action.label;
-          button.addEventListener("click", () => {
-            $("chatInput").value = action.prompt;
-            sendChat();
-          });
+          button.addEventListener("click", () => sendChat(action.prompt));
           actionBox.appendChild(button);
         });
         node.appendChild(actionBox);
@@ -439,52 +709,17 @@
       $("chatLog").scrollTop = $("chatLog").scrollHeight;
     }
 
-    async function loadStatus() {
-      const status = await api("/api/status");
-      $("versionPill").textContent = `v${status.version}`;
-      setStatus(`服务正常：${status.project_path || "未配置项目"}`);
-    }
-
-    async function loadConfig() {
-      appConfig = await api("/api/config");
-      $("apiBase").value = appConfig.api_base_url || "";
-      $("apiKey").value = appConfig.api_key || "";
-      $("model").value = appConfig.model || "";
-      $("projectPath").value = appConfig.content_project_path || "";
-      $("cloudBase").value = appConfig.cloud?.base_url || "";
-      $("contentType").value = appConfig.creator?.content_type || "";
-      $("niche").value = appConfig.creator?.niche || "";
-      $("platform").value = appConfig.creator?.platform || "";
-      $("licenseText").textContent = `状态：${appConfig.license?.status || "trial"}，离线宽限：${appConfig.license?.offline_grace_days || 7} 天`;
-    }
-
-    async function saveConfig() {
-      const payload = {
-        api_base_url: $("apiBase").value.trim(),
-        api_key: $("apiKey").value.trim(),
-        model: $("model").value.trim(),
-        content_project_path: $("projectPath").value.trim(),
-        cloud: {
-          base_url: $("cloudBase").value.trim()
-        },
-        creator: {
-          content_type: $("contentType").value.trim(),
-          niche: $("niche").value.trim(),
-          platform: $("platform").value.trim()
-        }
-      };
-      await api("/api/config", { method: "POST", body: JSON.stringify(payload) });
-      await loadConfig();
-      setStatus("配置已保存");
-    }
-
-    async function sendChat() {
-      const message = $("chatInput").value.trim();
+    async function sendChat(forcedMessage) {
+      const message = (forcedMessage || $("chatInput").value).trim();
       if (!message) return;
       $("chatInput").value = "";
       addMessage("user", message);
+      addLocalSpark(extractSparkText(message), "对话输入");
       const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message }) });
       addMessage("agent", formatReply(reply), replyActions(reply));
+      if (reply.result?.topic) addLocalSpark(reply.result.topic, "已处理");
+      await loadFiles();
+      renderSparkBoard();
     }
 
     function formatReply(reply) {
@@ -505,46 +740,195 @@
       return [{ label: `继续：${step.label}`, prompt: step.prompt }];
     }
 
+    function extractSparkText(message) {
+      return message.replace(/^(固化这个灵感|审核这个灵感|给这个选题评分|预测这个选题|写视频脚本|生成静态页文案)[：:]/, "").trim() || message;
+    }
+
+    function addLocalSpark(text, source) {
+      const content = (text || "").trim();
+      if (!content || content.length < 3) return;
+      const exists = localSparks.some((item) => item.content === content) || inboxItems.some((item) => (item.content || item.media_url) === content);
+      if (exists) return;
+      localSparks.unshift({ id: `local-${Date.now()}`, type: "text", content, source, sync_status: "local" });
+      localSparks = localSparks.slice(0, 12);
+      renderSparkBoard();
+    }
+
+    function scoreSpark(item) {
+      const text = item.content || item.media_url || "";
+      let score = 56;
+      score += Math.min(18, Math.floor(text.length / 6));
+      if (/为什么|怎么|如何|反差|误区|复盘|趋势|普通人|新手/.test(text)) score += 10;
+      if (/不要|总是|卡|失败|半途/.test(text)) score += 5;
+      if (item.tags?.length) score += Math.min(6, item.tags.length * 2);
+      if (item.sync_status === "processed") score -= 6;
+      return Math.max(42, Math.min(96, score));
+    }
+
     async function loadInbox() {
       const data = await api("/api/inbox");
-      const list = $("inboxList");
-      list.innerHTML = "";
-      const actionable = data.items.filter((item) => item.sync_status !== "processed");
-      const processedCount = data.items.length - actionable.length;
-      if (!actionable.length) {
-        list.innerHTML = `<p class="muted">暂无待处理灵感。${processedCount ? `已处理 ${processedCount} 条，可在产物里查看。` : ""}</p>`;
+      inboxItems = data.items || [];
+      renderSparkBoard();
+      renderMaterialList();
+    }
+
+    function sparkItems() {
+      const actionable = inboxItems.filter((item) => item.sync_status !== "processed");
+      return [...localSparks, ...actionable].slice(0, 18);
+    }
+
+    function renderSparkBoard() {
+      const board = $("sparkBoard");
+      const items = sparkItems();
+      $("sparkCount").textContent = `${items.length} 条`;
+      board.innerHTML = "";
+      if (!items.length) {
+        board.innerHTML = `<p class="muted">还没有待处理火花。直接在中间对话里输入灵感即可。</p>`;
         return;
       }
-      actionable.slice().reverse().forEach((item) => {
+      items.forEach((item) => {
+        const content = item.content || item.media_url || "(empty)";
         const node = document.createElement("div");
-        node.className = "list-item";
-        const title = document.createElement("div");
-        title.className = "item-meta";
-        title.textContent = `${typeLabel(item.type)} · ${statusLabel(item.sync_status)}`;
-        const content = document.createElement("div");
-        content.textContent = item.content || item.media_url || "(empty)";
-        const actions = document.createElement("div");
-        actions.className = "item-actions";
-        [
-          ["开始流程", "固化灵感"]
-        ].forEach(([label, instruction]) => {
-          const button = document.createElement("button");
-          button.className = "secondary";
-          button.textContent = label;
-          button.addEventListener("click", () => produceFromInbox(item.id, instruction));
-          actions.appendChild(button);
+        node.className = `spark-card ${selectedMaterial === content ? "active" : ""}`;
+        node.innerHTML = `
+          <div class="score-row">
+            <span class="tiny">${escapeHtml(item.source || typeLabel(item.type))}</span>
+            <span class="score-pill">${scoreSpark(item)} 分</span>
+          </div>
+          <div class="spark-title">${escapeHtml(content)}</div>
+        `;
+        node.addEventListener("click", () => selectMaterial(content, "spark"));
+        board.appendChild(node);
+      });
+    }
+
+    function renderMaterialList() {
+      const list = $("materialList");
+      list.innerHTML = "";
+      let items = [];
+      if (materialTab === "inbox") {
+        items = inboxItems.filter((item) => item.sync_status !== "processed").map((item) => ({
+          label: typeLabel(item.type),
+          content: item.content || item.media_url || "(empty)",
+          note: statusLabel(item.sync_status)
+        }));
+      } else if (materialTab === "mobile") {
+        items = [
+          { label: "手机同步", content: "拉取手机里新提交的灵感", action: pullCloud },
+          { label: "同步地址", content: appConfig.cloud?.base_url || "尚未设置手机同步地址", action: openSettings }
+        ];
+      } else {
+        Object.entries(fileGroups).forEach(([group, files]) => {
+          files.slice(0, 12).forEach((file) => {
+            items.push({ label: group, content: file.name || file.path, note: file.path });
+          });
         });
-        node.appendChild(title);
-        node.appendChild(content);
-        node.appendChild(actions);
+      }
+      if (!items.length) {
+        list.innerHTML = `<p class="muted">暂无可选素材。</p>`;
+        return;
+      }
+      items.forEach((item) => {
+        const node = document.createElement("div");
+        node.className = `material-card ${selectedMaterial === item.content ? "active" : ""}`;
+        node.innerHTML = `
+          <div class="tiny">${escapeHtml(item.label)}${item.note ? " · " + escapeHtml(item.note) : ""}</div>
+          <div class="material-title">${escapeHtml(item.content)}</div>
+        `;
+        node.addEventListener("click", async () => {
+          if (item.action) {
+            await item.action();
+          } else {
+            selectMaterial(item.content, item.label);
+          }
+        });
         list.appendChild(node);
       });
-      if (processedCount) {
-        const note = document.createElement("p");
-        note.className = "muted";
-        note.textContent = `已处理 ${processedCount} 条历史灵感，默认不重复显示。`;
-        list.appendChild(note);
+    }
+
+    function selectMaterial(content, label) {
+      selectedMaterial = content;
+      $("chatInput").value = `${label === "spark" ? "固化这个灵感" : "基于这个素材继续"}：${content}`;
+      $("chatInput").focus();
+      renderSparkBoard();
+      renderMaterialList();
+      addMessage("agent", `已把素材放进对话框：${content}`);
+    }
+
+    async function loadFiles() {
+      const data = await api("/api/files");
+      fileGroups = data.groups || {};
+      renderOutputBoard();
+      if (materialTab === "files") renderMaterialList();
+    }
+
+    function renderOutputBoard() {
+      const board = $("outputBoard");
+      board.innerHTML = "";
+      const entries = Object.entries(fileGroups);
+      if (!entries.length) {
+        board.innerHTML = `<p class="muted">暂无产出。完成一次固化、审核或脚本后会出现在这里。</p>`;
+        return;
       }
+      entries.forEach(([group, files]) => {
+        const node = document.createElement("div");
+        node.className = "output-card";
+        const rows = files.slice(0, 4).map((file) => `<div class="path">${escapeHtml(file.path)}</div>`).join("");
+        node.innerHTML = `<strong>${escapeHtml(group)}</strong> <span class="tiny">${files.length} 个文件</span>${rows}`;
+        board.appendChild(node);
+      });
+    }
+
+    async function pullCloud() {
+      const result = await api("/api/sync/inspirations", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      await loadInbox();
+      await loadFiles();
+      setStatus(result.note || `已拉取 ${result.pulled} 条云端灵感`);
+    }
+
+    async function activateLicense() {
+      const token = $("licenseToken").value.trim();
+      if (!token) return;
+      await api("/api/license/activate", { method: "POST", body: JSON.stringify({ token }) });
+      $("licenseToken").value = "";
+      await loadConfig();
+      setStatus("授权已写入本地");
+    }
+
+    async function testModel() {
+      await saveConfig();
+      try {
+        const result = await api("/api/llm/test", { method: "POST", body: JSON.stringify({}) });
+        setStatus(`模型测试成功：${result.reply || result.note}`);
+      } catch (error) {
+        setStatus(`模型测试失败：${error.message}`, false);
+      }
+    }
+
+    async function linkDevice() {
+      const cloudBase = $("cloudBase").value.trim();
+      if (!cloudBase) {
+        setStatus("先填写手机同步地址", false);
+        return;
+      }
+      await saveConfig();
+      const result = await api("/api/cloud/link-device", {
+        method: "POST",
+        body: JSON.stringify({ device_name: "desktop-workbench" })
+      });
+      await loadConfig();
+      setStatus(`已绑定设备：${result.device.device_id}`);
+    }
+
+    function openSettings() {
+      $("settingsBackdrop").hidden = false;
+    }
+
+    function closeSettings() {
+      $("settingsBackdrop").hidden = true;
     }
 
     function typeLabel(type) {
@@ -562,89 +946,9 @@
         pending: "待同步",
         pulled: "待处理",
         archived: "待处理",
-        processed: "已处理"
+        processed: "已处理",
+        local: "本次输入"
       }[status] || "待处理";
-    }
-
-    async function produceFromInbox(id, instruction) {
-      const result = await api("/api/inbox/produce", {
-        method: "POST",
-        body: JSON.stringify({ id, instruction })
-      });
-      addMessage("agent", formatReply(result.reply), replyActions(result.reply));
-      await loadInbox();
-      await loadFiles();
-      setStatus(`已开始流程：${instruction}`);
-    }
-
-    async function syncOne() {
-      const content = $("syncContent").value.trim();
-      if (!content) return;
-      const tags = $("syncTags").value.split(",").map((x) => x.trim()).filter(Boolean);
-      await api("/api/sync/inspirations", {
-        method: "POST",
-        body: JSON.stringify({ items: [{ type: "text", content, tags }] })
-      });
-      $("syncContent").value = "";
-      await loadInbox();
-      setStatus("已同步一条手机灵感");
-    }
-
-    async function pullCloud() {
-      const result = await api("/api/sync/inspirations", {
-        method: "POST",
-        body: JSON.stringify({})
-      });
-      await loadInbox();
-      await loadFiles();
-      setStatus(result.note || `已拉取 ${result.pulled} 条云端灵感`);
-    }
-
-    async function loadFiles() {
-      const data = await api("/api/files");
-      const list = $("fileList");
-      list.innerHTML = "";
-      Object.entries(data.groups).forEach(([group, files]) => {
-        const node = document.createElement("div");
-        node.className = "list-item";
-        const rows = files.slice(0, 8).map((file) => `<div class="muted">${escapeHtml(file.path)}</div>`).join("");
-        node.innerHTML = `<strong>${group}</strong> <span class="muted">${files.length} 个文件</span>${rows ? "<br>" + rows : ""}`;
-        list.appendChild(node);
-      });
-    }
-
-    async function activateLicense() {
-      const token = $("licenseToken").value.trim();
-      if (!token) return;
-      await api("/api/license/activate", { method: "POST", body: JSON.stringify({ token }) });
-      $("licenseToken").value = "";
-      await loadConfig();
-      setStatus("授权已写入本地 scaffold");
-    }
-
-    async function testModel() {
-      await saveConfig();
-      try {
-        const result = await api("/api/llm/test", { method: "POST", body: JSON.stringify({}) });
-        setStatus(`模型测试成功：${result.reply || result.note}`);
-      } catch (error) {
-        setStatus(`模型测试失败：${error.message}`, false);
-      }
-    }
-
-    async function linkDevice() {
-      const cloudBase = $("cloudBase").value.trim();
-      if (!cloudBase) {
-        setStatus("先填写 Cloud Base URL", false);
-        return;
-      }
-      await saveConfig();
-      const result = await api("/api/cloud/link-device", {
-        method: "POST",
-        body: JSON.stringify({ device_name: "desktop-workbench" })
-      });
-      await loadConfig();
-      setStatus(`已绑定设备：${result.device.device_id}`);
     }
 
     function escapeHtml(text) {
@@ -657,34 +961,46 @@
       }[char]));
     }
 
-    document.querySelectorAll("[data-tab]").forEach((button) => {
+    document.querySelectorAll("[data-material-tab]").forEach((button) => {
       button.addEventListener("click", () => {
-        document.querySelectorAll("[data-tab]").forEach((x) => x.classList.remove("active"));
+        document.querySelectorAll("[data-material-tab]").forEach((x) => x.classList.remove("active"));
         button.classList.add("active");
-        ["inbox", "sync", "files", "debug"].forEach((name) => {
-          $(`tab-${name}`).hidden = name !== button.dataset.tab;
-        });
+        materialTab = button.dataset.materialTab;
+        renderMaterialList();
       });
     });
 
-    $("saveConfig").addEventListener("click", saveConfig);
-    $("testModel").addEventListener("click", testModel);
-    $("sendChat").addEventListener("click", sendChat);
+    document.querySelectorAll("[data-prompt]").forEach((button) => {
+      button.addEventListener("click", () => {
+        $("chatInput").value = button.dataset.prompt;
+        $("chatInput").focus();
+      });
+    });
+
+    $("sendChat").addEventListener("click", () => sendChat());
     $("chatInput").addEventListener("keydown", (event) => {
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) sendChat();
     });
-    $("loadInbox").addEventListener("click", loadInbox);
-    $("syncOne").addEventListener("click", syncOne);
-    $("pullCloud").addEventListener("click", pullCloud);
-    $("loadFiles").addEventListener("click", loadFiles);
-    $("activateLicense").addEventListener("click", activateLicense);
-    $("linkDevice").addEventListener("click", linkDevice);
     $("refreshAll").addEventListener("click", async () => {
       await loadStatus();
       await loadConfig();
       await loadInbox();
       await loadFiles();
     });
+    $("openSettings").addEventListener("click", openSettings);
+    $("closeSettings").addEventListener("click", closeSettings);
+    $("settingsBackdrop").addEventListener("click", (event) => {
+      if (event.target.id === "settingsBackdrop") closeSettings();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !$("settingsBackdrop").hidden) closeSettings();
+    });
+    $("saveConfig").addEventListener("click", saveConfig);
+    $("testModel").addEventListener("click", testModel);
+    $("activateLicense").addEventListener("click", activateLicense);
+    $("linkDevice").addEventListener("click", linkDevice);
+    $("loadFiles").addEventListener("click", loadFiles);
+    $("pullCloud").addEventListener("click", pullCloud);
 
     (async function init() {
       try {
@@ -692,7 +1008,7 @@
         await loadConfig();
         await loadInbox();
         await loadFiles();
-        addMessage("agent", "我已经准备好了。先丢一个灵感火花，我会先把它固化成选题卡，再带你做审核、评分、预测和写视频脚本。");
+        addMessage("agent", "我已经准备好了。直接输入灵感，也可以把内容形态、平台、赛道、人设一起写在对话里。左侧会自动形成火花看板，右侧可以选择素材进入对话。");
       } catch (error) {
         setStatus(error.message, false);
       }

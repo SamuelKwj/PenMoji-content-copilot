@@ -9,7 +9,7 @@ Build a beginner-friendly local-first content creator agent product from the exi
 - The local desktop workbench is running at `http://127.0.0.1:7870`.
 - The local cloud mock is running at `http://127.0.0.1:8787`.
 - The default content project path is `%USERPROFILE%\.content-workbench\projects\default-content-project`, not the source skill bundle.
-- The first visible desktop/browser surface is the original function-block layout with `基础设置/授权` on the left, `引导流程` in the middle, and `素材与产物` on the right.
+- The first visible desktop/browser surface is now the clean-entry layout: left `火花看板`, center fixed `引导对话`, right `素材选择` plus `产出看板`, with settings hidden behind the top-right gear.
 - `content-workbench/main.py` has explicit route-priority handling, and the running `7870` Python process has been restarted so the backend change is live.
 
 ## Product Decisions
@@ -42,10 +42,12 @@ Build a beginner-friendly local-first content creator agent product from the exi
 - Generic ideas and "full package" wording now start at spark solidification only; users continue step by step with a `继续：下一步` action.
 - Explicit review/score/prediction/script/static-page requests now produce only that current step.
 - Visible UI labels are beginner-facing: `灵感到脚本`, `引导流程`, `灵感`, `手机同步`, and `产物`; the default UI no longer shows `Agent Chat` or a visible `Debug` tab.
-- The attempted Notion/Taskade three-column workflow-board restructure was reverted after user correction. Future UI work should preserve the existing function blocks and focus on palette, spacing, visual hierarchy, hover/active states, and subtle interaction effects unless the user explicitly asks for a structural redesign.
+- The attempted Notion/Taskade six-step workflow-board restructure was reverted after user correction.
+- Current accepted direction is fewer entrances and a cleaner page: settings are a gear modal, creator positioning is captured in dialogue, the left rail is a scored spark board, and the right rail is material selection plus output board.
 - Default inbox view hides processed items so old test records do not suggest the product still generates "full package" outputs.
 - Workflow command prefixes such as `全套物料：` are stripped from generated artifact folder names; artifact paths should name the real topic.
 - Backend route priority now treats explicit prompts such as `固化这个灵感：...` as the intended step even when the topic text contains words like `验证`.
+- Backend routing no longer treats bare `口播`/`口播内容` as a script request; explicit `写视频脚本`, `口播脚本`, or `口播稿` still route to video script.
 - Local cloud mock with mobile submit, desktop pull, ack, device link, and subscription status.
 - Minimal WeChat Mini Program client for submitting inspiration and viewing sync status.
 
@@ -71,6 +73,9 @@ Build a beginner-friendly local-first content creator agent product from the exi
 - Restore check confirmed the served HTML contains `引导流程`, `素材与产物`, and `基础设置`, and no longer contains `6 步内容流程`, `灵感库`, or `nextCard`.
 - Direct Python route verification confirmed `固化这个灵感：验证选题...` returns `spark_solidify`/`spark_card`, while review/score/full-package prompts route correctly.
 - Runtime HTTP route verification confirmed the running `7870` service routes `固化这个灵感：验证选题...` to `spark_solidify`/`spark_card`, and the browser click path returns `灵感固化卡` with next step `审核`.
+- Clean-entry UI verification confirmed `火花看板`, `引导对话`, `素材选择`, `产出看板`, gear settings, Escape close, and material-to-dialogue insertion render/work on desktop/mobile with no console errors.
+- Runtime HTTP route verification confirmed `测试灵感...平台抖音，口播内容` routes to `spark_solidify`/`spark_card`, while `写视频脚本...` routes to `video_script`.
+- Playwright verified clicking a material card inserts that material into the dialogue input.
 - Mini-program JSON parsed successfully and mini-program JS passed `node --check`.
 
 ## Next Steps
