@@ -276,34 +276,39 @@
 
     .spark-title,
     .material-title,
-    .selected-material-title {
+    .chat-material-title {
       margin-top: 6px;
       line-height: 1.5;
       overflow-wrap: anywhere;
     }
 
-    .selected-material {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
+    .chat-material-chip {
+      position: relative;
       border: 1px solid #e49b82;
       border-radius: 9px;
       background: #fff4ee;
-      padding: 10px;
+      padding: 10px 38px 10px 10px;
       margin-bottom: 9px;
       font-size: 13px;
     }
 
-    .selected-material > div {
-      min-width: 0;
+    .material-chip-close {
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      min-height: 24px;
+      padding: 0;
+      border-radius: 999px;
+      font-size: 16px;
+      line-height: 1;
     }
 
-    .selected-material button {
-      flex: 0 0 auto;
-      min-height: 30px;
-      padding: 5px 9px;
-      font-size: 12px;
+    .material-chip-close:hover {
+      transform: none;
     }
 
     .score-row {
@@ -571,6 +576,11 @@
           <div class="chat-log" id="chatLog"></div>
           <div class="chat-input">
             <div>
+              <div class="chat-material-chip" id="chatMaterialChip" hidden>
+                <div class="tiny">素材标签</div>
+                <div class="chat-material-title" id="chatMaterialTitle"></div>
+                <button class="secondary material-chip-close" id="clearSelectedMaterial" type="button" aria-label="删除素材">×</button>
+              </div>
               <textarea id="chatInput" placeholder="输入灵感，或直接说：我是做个人IP口播，平台抖音，赛道是商业诊断，帮我固化这个选题..."></textarea>
               <div class="quick-row">
                 <button class="quick-chip" data-prompt="我是做口播内容，平台抖音，赛道是个人IP，请先记住这个定位。">补充定位</button>
@@ -589,7 +599,7 @@
           <div class="panel-head">
             <div>
               <h2>素材选择</h2>
-              <p class="muted">点击素材进入对话框，再次点击或点移除可取消。</p>
+              <p class="muted">点击素材，会带标签进入对话框。</p>
             </div>
             <div class="tabs-lite">
               <button class="active" data-material-tab="inbox">灵感</button>
@@ -598,13 +608,6 @@
             </div>
           </div>
           <div class="panel-body">
-            <div class="selected-material" id="selectedMaterialBar" hidden>
-              <div>
-                <div class="tiny">已选素材</div>
-                <div class="selected-material-title" id="selectedMaterialTitle"></div>
-              </div>
-              <button class="secondary" id="clearSelectedMaterial" type="button">移除</button>
-            </div>
             <div class="material-list" id="materialList"></div>
           </div>
         </section>
@@ -760,7 +763,8 @@
     }
 
     async function sendChat(forcedMessage) {
-      const message = (forcedMessage || $("chatInput").value).trim();
+      const rawMessage = (forcedMessage || $("chatInput").value).trim();
+      const message = forcedMessage ? rawMessage : composeChatMessage(rawMessage);
       if (!message) return;
       $("chatInput").value = "";
       if (selectedMaterial) clearSelectedMaterial({ clearInput: false, quiet: true });
@@ -905,24 +909,31 @@
       }
       selectedMaterial = content;
       selectedMaterialLabel = label;
-      selectedMaterialPrompt = `${label === "spark" ? "固化这个灵感" : "基于这个素材继续"}：${content}`;
+      selectedMaterialPrompt = `${label === "spark" ? "固化这个灵感" : "基于这个素材继续"}：`;
       $("chatInput").value = selectedMaterialPrompt;
       $("chatInput").focus();
       renderSparkBoard();
       renderMaterialList();
-      addMessage("agent", `已把素材放进对话框：${content}`);
+      setStatus("已添加素材标签");
+    }
+
+    function composeChatMessage(rawMessage) {
+      if (!selectedMaterial) return rawMessage;
+      const label = selectedMaterialLabel === "spark" ? "火花" : selectedMaterialLabel || "素材";
+      const prompt = rawMessage || "基于这个素材继续：";
+      return `${prompt}\n\n${label}：${selectedMaterial}`;
     }
 
     function renderSelectedMaterial() {
-      const bar = $("selectedMaterialBar");
+      const chip = $("chatMaterialChip");
       if (!selectedMaterial) {
-        bar.hidden = true;
-        $("selectedMaterialTitle").textContent = "";
+        chip.hidden = true;
+        $("chatMaterialTitle").textContent = "";
         return;
       }
-      bar.hidden = false;
+      chip.hidden = false;
       const label = selectedMaterialLabel === "spark" ? "火花" : selectedMaterialLabel;
-      $("selectedMaterialTitle").textContent = `${label}：${selectedMaterial}`;
+      $("chatMaterialTitle").textContent = `${label}：${selectedMaterial}`;
     }
 
     function clearSelectedMaterial(options = {}) {
@@ -936,7 +947,7 @@
       selectedMaterialPrompt = "";
       renderSparkBoard();
       renderMaterialList();
-      if (!quiet) setStatus("已移除选中素材");
+      if (!quiet) setStatus("已删除素材标签");
     }
 
     async function loadFiles() {
