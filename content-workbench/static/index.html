@@ -275,10 +275,35 @@
     }
 
     .spark-title,
-    .material-title {
+    .material-title,
+    .selected-material-title {
       margin-top: 6px;
       line-height: 1.5;
       overflow-wrap: anywhere;
+    }
+
+    .selected-material {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid #e49b82;
+      border-radius: 9px;
+      background: #fff4ee;
+      padding: 10px;
+      margin-bottom: 9px;
+      font-size: 13px;
+    }
+
+    .selected-material > div {
+      min-width: 0;
+    }
+
+    .selected-material button {
+      flex: 0 0 auto;
+      min-height: 30px;
+      padding: 5px 9px;
+      font-size: 12px;
     }
 
     .score-row {
@@ -564,7 +589,7 @@
           <div class="panel-head">
             <div>
               <h2>素材选择</h2>
-              <p class="muted">点击素材，会进入对话框。</p>
+              <p class="muted">点击素材进入对话框，再次点击或点移除可取消。</p>
             </div>
             <div class="tabs-lite">
               <button class="active" data-material-tab="inbox">灵感</button>
@@ -573,6 +598,13 @@
             </div>
           </div>
           <div class="panel-body">
+            <div class="selected-material" id="selectedMaterialBar" hidden>
+              <div>
+                <div class="tiny">已选素材</div>
+                <div class="selected-material-title" id="selectedMaterialTitle"></div>
+              </div>
+              <button class="secondary" id="clearSelectedMaterial" type="button">移除</button>
+            </div>
             <div class="material-list" id="materialList"></div>
           </div>
         </section>
@@ -657,6 +689,8 @@
     let fileGroups = {};
     let materialTab = "inbox";
     let selectedMaterial = "";
+    let selectedMaterialLabel = "";
+    let selectedMaterialPrompt = "";
     let localSparks = [];
 
     async function api(path, options = {}) {
@@ -729,6 +763,7 @@
       const message = (forcedMessage || $("chatInput").value).trim();
       if (!message) return;
       $("chatInput").value = "";
+      if (selectedMaterial) clearSelectedMaterial({ clearInput: false, quiet: true });
       addMessage("user", message);
       addLocalSpark(extractSparkText(message), "对话输入");
       const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message }) });
@@ -821,6 +856,7 @@
     function renderMaterialList() {
       const list = $("materialList");
       list.innerHTML = "";
+      renderSelectedMaterial();
       let items = [];
       if (materialTab === "inbox") {
         items = inboxItems.filter((item) => item.sync_status !== "processed").map((item) => ({
@@ -863,12 +899,44 @@
     }
 
     function selectMaterial(content, label) {
+      if (selectedMaterial === content) {
+        clearSelectedMaterial();
+        return;
+      }
       selectedMaterial = content;
-      $("chatInput").value = `${label === "spark" ? "固化这个灵感" : "基于这个素材继续"}：${content}`;
+      selectedMaterialLabel = label;
+      selectedMaterialPrompt = `${label === "spark" ? "固化这个灵感" : "基于这个素材继续"}：${content}`;
+      $("chatInput").value = selectedMaterialPrompt;
       $("chatInput").focus();
       renderSparkBoard();
       renderMaterialList();
       addMessage("agent", `已把素材放进对话框：${content}`);
+    }
+
+    function renderSelectedMaterial() {
+      const bar = $("selectedMaterialBar");
+      if (!selectedMaterial) {
+        bar.hidden = true;
+        $("selectedMaterialTitle").textContent = "";
+        return;
+      }
+      bar.hidden = false;
+      const label = selectedMaterialLabel === "spark" ? "火花" : selectedMaterialLabel;
+      $("selectedMaterialTitle").textContent = `${label}：${selectedMaterial}`;
+    }
+
+    function clearSelectedMaterial(options = {}) {
+      if (!selectedMaterial) return;
+      const { clearInput = true, quiet = false } = options;
+      if (clearInput && $("chatInput").value === selectedMaterialPrompt) {
+        $("chatInput").value = "";
+      }
+      selectedMaterial = "";
+      selectedMaterialLabel = "";
+      selectedMaterialPrompt = "";
+      renderSparkBoard();
+      renderMaterialList();
+      if (!quiet) setStatus("已移除选中素材");
     }
 
     async function loadFiles() {
@@ -997,6 +1065,11 @@
     $("chatInput").addEventListener("keydown", (event) => {
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) sendChat();
     });
+    $("chatInput").addEventListener("input", () => {
+      if (selectedMaterial && !$("chatInput").value.trim()) {
+        clearSelectedMaterial({ clearInput: false, quiet: true });
+      }
+    });
     $("refreshAll").addEventListener("click", async () => {
       await loadStatus();
       await loadConfig();
@@ -1005,6 +1078,7 @@
     });
     $("openSettings").addEventListener("click", openSettings);
     $("closeSettings").addEventListener("click", closeSettings);
+    $("clearSelectedMaterial").addEventListener("click", () => clearSelectedMaterial());
     $("settingsBackdrop").addEventListener("click", (event) => {
       if (event.target.id === "settingsBackdrop") closeSettings();
     });
