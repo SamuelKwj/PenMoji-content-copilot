@@ -297,3 +297,16 @@
   - Restyled the starter demo entry as `生成演示样本` and added in-progress/completion feedback.
 - Verification:
   - Playwright confirmed compact cards default to zero visible detail panels, ranking badges display, detail toggle opens details, blind scoring auto-expands the scored card, demo flow finishes, all five output categories remain visible, and browser console has no errors.
+
+### Phase 14: Formal Demo Mode
+- **Status:** complete
+- Actions taken:
+  - Created rollback tag `before-demo-mode-formalize`.
+  - Moved the demo entry from the starter hints into the top bar as `演示模式`.
+  - Added `清理演示` and backend `/api/demo/reset`.
+  - Added demo metadata to inbox items and generated artifact manifests so demo data can be removed cleanly.
+  - Fixed Windows cleanup behavior by collecting manifest paths before deleting directories.
+- Verification:
+  - `python -m py_compile content-workbench/main.py`
+  - `git diff --check -- content-workbench/main.py content-workbench/static/index.html`
+  - Playwright confirmed top-bar demo controls, demo generation, five output categories, demo cleanup back to zero demo sparks, service status staying normal, and no browser console errors.

@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import urllib.error
 import urllib.request
 import uuid
@@ -27,6 +28,7 @@ CONVERSATIONS_DIR = DATA_ROOT / "conversations"
 LEGACY_DEFAULT_PROJECT_PATH = WORKSPACE_ROOT / "Content Creator Pipeline"
 DEFAULT_PROJECT_PATH = DATA_ROOT / "projects" / "default-content-project"
 MASKED_KEY = "********"
+DEMO_TOPIC = "普通人为什么做个人IP总是半途而废"
 DELIVERABLE_LABELS = {
     "spark_card": "灵感固化卡",
     "review": "内容审核",
@@ -191,7 +193,18 @@ def normalize_inspiration(item: dict, user_id: str = "local-user") -> dict:
         "local_path": item.get("local_path", ""),
         "source_url": item.get("source_url", ""),
     }
-    for key in ("skill_score", "blind_score", "score_source", "score_breakdown", "rubric_breakdown"):
+    for key in (
+        "demo",
+        "skill_score",
+        "blind_score",
+        "score_source",
+        "score_breakdown",
+        "rubric_breakdown",
+        "title_candidates",
+        "selected_title",
+        "scored_at",
+        "artifact_paths",
+    ):
         if key in item:
             normalized[key] = item[key]
     return normalized
@@ -650,10 +663,13 @@ Composite：{score_data.get("composite", 0)}/10
 """
 
 
-def score_spark_item(item: dict, selected_title: str, config: dict) -> tuple[dict, list[dict]]:
+def score_spark_item(item: dict, selected_title: str, config: dict, demo: bool = False) -> tuple[dict, list[dict]]:
     topic = item.get("content") or item.get("media_url") or "未命名灵感"
     score_data = blind_score_spark(topic, selected_title)
     rendered = {"score": render_blind_score(topic, score_data)}
+    source = {"inbox_id": item.get("id", ""), "score_source": score_data["score_source"]}
+    if demo:
+        source["demo"] = True
     artifacts = write_deliverable_artifacts(
         f"给这个选题评分：{topic}",
         "blind_score",
@@ -661,11 +677,55 @@ def score_spark_item(item: dict, selected_title: str, config: dict) -> tuple[dic
         rendered,
         "",
         config,
-        source={"inbox_id": item.get("id", ""), "score_source": score_data["score_source"]},
+        source=source,
     )
     existing_paths = item.get("artifact_paths") if isinstance(item.get("artifact_paths"), list) else []
     score_data["artifact_paths"] = [*existing_paths, *[entry["path"] for entry in artifacts]]
     return score_data, artifacts
+
+
+def is_demo_inbox_item(item: dict) -> bool:
+    tags = item.get("tags") if isinstance(item.get("tags"), list) else []
+    content = item.get("content") or item.get("media_url") or ""
+    return bool(item.get("demo")) or "演示" in tags or content == DEMO_TOPIC
+
+
+def manifest_is_demo(manifest: dict) -> bool:
+    source = manifest.get("source") if isinstance(manifest.get("source"), dict) else {}
+    request = manifest.get("request") or ""
+    topic = manifest.get("topic") or ""
+    return bool(source.get("demo")) or topic == DEMO_TOPIC or DEMO_TOPIC in request
+
+
+def reset_demo_data(config: dict) -> dict:
+    inbox_items = read_jsonl(INBOX_PATH)
+    kept_items = [item for item in inbox_items if not is_demo_inbox_item(item)]
+    removed_inbox = len(inbox_items) - len(kept_items)
+    if removed_inbox:
+        rewrite_jsonl(INBOX_PATH, kept_items)
+
+    project_path = project_path_from_config(config)
+    deliverables_root = (project_path / "deliverables").resolve()
+    removed_dirs = 0
+    if deliverables_root.exists():
+        manifest_paths = list(deliverables_root.rglob("manifest.json"))
+        for manifest_path in manifest_paths:
+            if not manifest_path.exists():
+                continue
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if not manifest_is_demo(manifest):
+                continue
+            target_dir = manifest_path.parent.resolve()
+            try:
+                target_dir.relative_to(deliverables_root)
+            except ValueError:
+                continue
+            shutil.rmtree(target_dir)
+            removed_dirs += 1
+    return {"removed_inbox": removed_inbox, "removed_deliverable_dirs": removed_dirs}
 
 
 def render_prediction(topic: str) -> str:
@@ -1000,7 +1060,8 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if payload.get("force_local"):
                 config["api_key"] = ""
             message = payload.get("message", "")
-            reply = local_agent_reply(message, config)
+            source = {"demo": True} if payload.get("demo") else None
+            reply = local_agent_reply(message, config, source=source)
             self.save_conversation_turn(message, reply)
             self.send_json(reply)
         elif path == "/api/llm/test":
@@ -1048,10 +1109,13 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                         "media_url": payload.get("media_url", ""),
                         "tags": payload.get("tags") if isinstance(payload.get("tags"), list) else [],
                         "sync_status": "pulled",
+                        "demo": bool(payload.get("demo")),
                     }
                 )
                 created = True
-            score_updates, artifacts = score_spark_item(item, selected_title, config)
+            score_updates, artifacts = score_spark_item(item, selected_title, config, demo=bool(payload.get("demo") or item.get("demo")))
+            if payload.get("demo"):
+                score_updates["demo"] = True
             if created:
                 item.update(score_updates)
                 append_jsonl(INBOX_PATH, item)
@@ -1059,6 +1123,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             else:
                 updated = update_inbox_item(item["id"], score_updates) or {**item, **score_updates}
             self.send_json({"status": "ok", "item": updated, "artifacts": artifacts})
+        elif path == "/api/demo/reset":
+            result = reset_demo_data(load_config(include_secret=False))
+            self.send_json({"status": "ok", **result})
         elif path == "/api/inbox/produce":
             item_id = payload.get("id", "")
             instruction = payload.get("instruction", "选题分析")

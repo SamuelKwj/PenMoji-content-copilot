@@ -82,6 +82,18 @@
       font-size: 18px;
     }
 
+    button.demo-mode {
+      background: #2f3a33;
+      color: #fffdfa;
+      border-color: #2f3a33;
+      box-shadow: 0 8px 20px rgba(47, 58, 51, .14);
+    }
+
+    button.demo-mode:hover {
+      background: #26302a;
+      border-color: #26302a;
+    }
+
     input, textarea {
       width: 100%;
       border: 1px solid var(--line);
@@ -483,18 +495,6 @@
       box-shadow: 0 8px 18px rgba(199, 81, 47, .09);
     }
 
-    .starter-hint.demo {
-      border-style: solid;
-      background: #2f3a33;
-      color: #fffdfa;
-      font-weight: 720;
-    }
-
-    .starter-hint.demo:hover {
-      background: #26302a;
-      box-shadow: 0 12px 26px rgba(47, 58, 51, .16);
-    }
-
     .toast {
       position: fixed;
       z-index: 40;
@@ -856,6 +856,8 @@
       <div class="top-actions">
         <span class="pill" id="versionPill">v0.1.0</span>
         <span class="pill" id="statusText">连接中</span>
+        <button class="demo-mode" id="runDemoFlow" type="button">演示模式</button>
+        <button class="secondary" id="resetDemoFlow" type="button">清理演示</button>
         <button class="secondary" id="refreshAll">刷新</button>
         <button class="secondary icon" id="openSettings" title="设置" aria-label="设置">⚙</button>
       </div>
@@ -894,7 +896,6 @@
               <button class="starter-hint" data-prompt="我有一个选题：普通人为什么做个人IP总是半途而废？帮我先判断值不值得做。">判断一个选题值不值得做</button>
               <button class="starter-hint" data-prompt="我是做个人IP口播，平台抖音，赛道是商业诊断。请先记住这个定位。">先补充我的账号定位</button>
               <button class="starter-hint" data-prompt="基于最近的火花看板，帮我挑一个最适合今天写脚本的方向。">从火花里挑今天的脚本方向</button>
-              <button class="starter-hint demo" id="runDemoFlow" type="button">生成演示样本</button>
             </div>
           </div>
           <div class="chat-input">
@@ -1034,6 +1035,7 @@
     let demoRunning = false;
     const scoringSparkIds = new Set();
     const expandedSparkIds = new Set();
+    const DEMO_TOPIC = "普通人为什么做个人IP总是半途而废";
     const OUTPUT_TYPES = ["灵感固化卡", "审核结果", "视频脚本", "发布文案", "静态页文案"];
 
     async function api(path, options = {}) {
@@ -1377,18 +1379,18 @@
       demoButton.disabled = true;
       demoButton.textContent = "演示生成中...";
       hideStarterHints();
-      const topic = "普通人为什么做个人IP总是半途而废";
+      const topic = DEMO_TOPIC;
       showToast("开始生成演示流");
       try {
         addMessage("user", `演示流：${topic}`);
         const inbox = await api("/api/inbox", {
           method: "POST",
-          body: JSON.stringify({ type: "text", content: topic, tags: ["演示", "个人IP"], sync_status: "pulled" })
+          body: JSON.stringify({ type: "text", content: topic, tags: ["演示", "个人IP"], sync_status: "pulled", demo: true })
         });
         await runDemoStep(`固化这个灵感：${topic}`);
         const scoreResult = await api("/api/spark/blind-score", {
           method: "POST",
-          body: JSON.stringify({ id: inbox.item.id, content: topic })
+          body: JSON.stringify({ id: inbox.item.id, content: topic, demo: true })
         });
         addMessage("agent", formatSparkScore(scoreResult.item), [{ label: "继续：审核", prompt: `审核这个灵感：${topic}` }]);
         await runDemoStep(`审核这个灵感：${topic}`);
@@ -1404,15 +1406,35 @@
       } finally {
         demoRunning = false;
         demoButton.disabled = false;
-        demoButton.textContent = "生成演示样本";
+        demoButton.textContent = "演示模式";
       }
     }
 
     async function runDemoStep(message) {
       addMessage("user", message);
-      const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message, force_local: true }) });
+      const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message, force_local: true, demo: true }) });
       addMessage("agent", formatReply(reply), replyActions(reply));
       return reply;
+    }
+
+    async function resetDemoFlow() {
+      const resetButton = $("resetDemoFlow");
+      resetButton.disabled = true;
+      resetButton.textContent = "清理中...";
+      try {
+        const result = await api("/api/demo/reset", { method: "POST", body: JSON.stringify({}) });
+        localSparks = localSparks.filter((item) => !item.demo && item.content !== DEMO_TOPIC);
+        expandedSparkIds.clear();
+        await loadInbox();
+        await loadFiles();
+        addMessage("agent", `演示数据已清理：移除 ${result.removed_inbox} 条火花、${result.removed_deliverable_dirs} 组产物。`);
+        showToast("演示数据已清理");
+      } catch (error) {
+        setStatus(`清理演示失败：${error.message}`, false);
+      } finally {
+        resetButton.disabled = false;
+        resetButton.textContent = "清理演示";
+      }
     }
 
     function renderMaterialList() {
@@ -1798,6 +1820,7 @@
       });
     });
     $("runDemoFlow").addEventListener("click", runDemoFlow);
+    $("resetDemoFlow").addEventListener("click", resetDemoFlow);
 
     $("sendChat").addEventListener("click", () => sendChat());
     $("chatInput").addEventListener("keydown", (event) => {

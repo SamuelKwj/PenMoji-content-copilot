@@ -120,6 +120,14 @@ Clean Entry UI Verified
 - [x] Verify compact ranking, detail expansion, blind-score auto expansion, demo flow completion, and browser console health.
 - **Status:** complete
 
+### Phase 14: Formal Demo Mode
+- [x] Create rollback tag `before-demo-mode-formalize`.
+- [x] Move demo generation into the top bar as a formal `演示模式` action.
+- [x] Add `清理演示` so demo sparks and demo deliverables can be removed after presentation.
+- [x] Mark demo inbox items and demo artifacts with structured metadata.
+- [x] Verify demo generation, demo cleanup, output board refresh, service status, and browser console health.
+- **Status:** complete
+
 ## Key Questions
 1. Should the mini-program be a full AI workbench? Answer: no, it is only a quick inspiration capture and sync entry.
 2. Should v1 be SaaS-first? Answer: no, v1 is local-first with light cloud for sync and subscription.
