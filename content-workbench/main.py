@@ -1032,6 +1032,19 @@ def has_any(text: str, tokens: list[str]) -> bool:
     return any(token in text for token in tokens)
 
 
+def blind_input_self_check(text: str) -> dict:
+    saw_play_numbers = bool(re.search(r"(播放|阅读|浏览|观看|完播|点击).{0,8}(\d|[一二三四五六七八九十百千万])", text, re.IGNORECASE))
+    saw_comments = bool(re.search(r"评论|留言|弹幕", text, re.IGNORECASE))
+    saw_retro_segment = bool(re.search(r"复盘|实绩|实际数据|发布后|已发布|后台数据", text, re.IGNORECASE))
+    saw_metric_unit = bool(re.search(r"\d+\s*(w|W|k|K|m|M|万)", text))
+    return {
+        "saw_play_numbers": saw_play_numbers or saw_metric_unit,
+        "saw_comments": saw_comments,
+        "saw_retro_segment": saw_retro_segment,
+        "any_contamination_signal": saw_play_numbers or saw_comments or saw_retro_segment or saw_metric_unit,
+    }
+
+
 def dim_result(key: str, label: str, score: int, confidence: str, reason: str) -> dict:
     return {
         "dimension": key,
@@ -1176,6 +1189,8 @@ def prompt_blind_score_spark(topic: str, selected_title: str, candidates: list[s
     composite, skill_score = composite_score(dimensions)
     scoring_text = f"{selected_title}\n{topic}"
     self_check = parsed.get("self_check") if isinstance(parsed.get("self_check"), dict) else {}
+    local_self_check = blind_input_self_check(scoring_text)
+    self_check = {**self_check, **{key: bool(self_check.get(key) or value) for key, value in local_self_check.items()}}
     source_note = (
         "模型盲评：仅提交标题候选、火花/大纲/正文和 rubric 维度；"
         "不提交历史预测、复盘、播放数据或用户状态。"
@@ -1212,11 +1227,15 @@ def local_blind_score_spark(topic: str, selected_title: str = "", fallback_note:
     dimensions = score_spark_dimensions(topic, chosen_title)
     composite, skill_score = composite_score(dimensions)
     scoring_text = f"{chosen_title}\n{topic}"
+    self_check = blind_input_self_check(scoring_text)
+    source_note = fallback_note or "未配置可用模型，使用本地兼容评分；字段结构与 blind-score 对齐。"
+    if self_check["any_contamination_signal"]:
+        source_note += " 输入中出现疑似播放/评论/复盘信号，本次分数需按污染输入看待。"
     return {
         "skill_score": skill_score,
         "blind_score": skill_score,
         "score_source": "cheat-score-blind-compatible/local-v0",
-        "score_source_note": fallback_note or "未配置可用模型，使用本地兼容评分；字段结构与 blind-score 对齐。",
+        "score_source_note": source_note,
         "rubric_version": "spark-v0",
         "composite": composite,
         "score_breakdown": dimensions,
@@ -1226,7 +1245,7 @@ def local_blind_score_spark(topic: str, selected_title: str = "", fallback_note:
         "script_hash": hashlib.sha256(scoring_text.encode("utf-8")).hexdigest()[:12],
         "blind_input_policy": "local-compatible-title-content-rubric",
         "input_status": {"minimal_input_only": True, "local_fallback": True},
-        "self_check": {"any_contamination_signal": False},
+        "self_check": self_check,
     }
 
 

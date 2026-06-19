@@ -391,3 +391,18 @@
   - Isolated route validation on port `7895` tested 16 representative new trigger phrases; all 16 produced the expected deliverable type and markdown artifact.
   - Cleanup confirmed `.verify-skill-coverage` is absent and port `7895` is no longer listening.
   - `mobile-miniapp/project.config.json` and `mobile-miniapp/project.private.config.json` were not modified by this phase.
+
+### Phase 20: Skill Compliance Harness
+- **Status:** complete
+- Actions taken:
+  - Created rollback tag `before-skill-compliance-harness`.
+  - Added `content-workbench/tools/skill_compliance_tests.py`.
+  - Added route/output checks for 16 representative skill trigger phrases.
+  - Added golden/red-team checks for Douyin hard-risk review, humanizer AI-phrase removal, blind-score contamination detection, prediction immutability after retro, and skill coverage audit rows.
+  - First harness run found one real defect: local blind-score fallback did not mark playback/comment contamination signals.
+  - Fixed blind-score self-check so both model and local fallback paths detect playback/comment/retro contamination signals and preserve them in `self_check`.
+- Verification:
+  - First harness run: 26/27 passed; failed `blind-score:contamination-detected`.
+  - Final harness run: 27/27 passed.
+  - `python -m py_compile content-workbench\main.py content-workbench\cloud_mock.py content-workbench\tools\skill_compliance_tests.py` passed.
+  - `mobile-miniapp/project.config.json` and `mobile-miniapp/project.private.config.json` were not modified by this phase.

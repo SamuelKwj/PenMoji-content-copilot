@@ -4,7 +4,7 @@
 Turn the existing Content Creator Pipeline skill bundle into a beginner-friendly local script workflow assistant for inspiration capture, spark solidification, review, scoring, prediction, video-script writing, and text/static-page material generation.
 
 ## Current Phase
-Skill Coverage Integration Complete
+Skill Compliance Harness Complete
 
 ## Phases
 
@@ -177,6 +177,15 @@ Skill Coverage Integration Complete
 - [x] Verify syntax, diff hygiene, all new route outputs, and unchanged mini-program dirty files.
 - **Status:** complete
 
+### Phase 20: Skill Compliance Harness
+- [x] Create rollback tag `before-skill-compliance-harness`.
+- [x] Add a reusable skill compliance test harness.
+- [x] Cover route/output checks for newly integrated skill adapters.
+- [x] Add golden/red-team checks for Douyin review, humanizer, blind-score contamination, prediction immutability, and coverage documentation.
+- [x] Run the harness, use failures to fix implementation, and rerun to green.
+- [x] Verify syntax, diff hygiene, and unchanged mini-program dirty files.
+- **Status:** complete
+
 ## Key Questions
 1. Should the mini-program be a full AI workbench? Answer: no, it is only a quick inspiration capture and sync entry.
 2. Should v1 be SaaS-first? Answer: no, v1 is local-first with light cloud for sync and subscription.
@@ -208,6 +217,7 @@ Skill Coverage Integration Complete
 | Publish/retro loop is local-only | Keep it local for MVP credibility; later connect metrics import and real platform data. |
 | Prompt blind-score is model-dependent | It improves scoring credibility with minimal input, but true Codex Task sub-agent isolation remains a future hardening step. |
 | Full skill coverage is now exposed through local MVP adapters | Every packaged child skill has a workbench route and artifact, while external/API-heavy skills remain local approximations until production integrations exist. |
+| Skill behavior now has executable compliance checks | Prompt-like skill contracts need tests; the harness catches drift such as blind-score contamination handling. |
 
 ## Notes
 - The current workbench is an executable local MVP for guided script workflow, not the full commercial product.
