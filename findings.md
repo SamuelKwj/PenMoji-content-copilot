@@ -66,6 +66,7 @@
 | Dialogue text containing `口播内容` was routed to video script | Removed bare `口播` from generic script keywords; explicit `口播脚本` and `口播稿` still route to video script. |
 | Spark board scores looked like real skill scores even when they were frontend heuristics | Replaced frontend scoring with clickable `待盲评`; scores now come from backend-written score fields. |
 | Demo flow could hang when a configured model endpoint was unreachable | Added `force_local` for demo chat calls so presentations use deterministic fallback and finish quickly. |
+| Spark score details made the first view too sparse for demos | Changed sparks to compact ranked rows by default, with dimensions and title candidates behind `详情`. |
 
 ## Resources
 - Existing pipeline root: `C:\Users\samue\Documents\内容生产agent\Content Creator Pipeline`
@@ -84,3 +85,4 @@
 - Runtime route check confirmed `测试灵感...平台抖音，口播内容` routes to spark solidification, while `写视频脚本...` still routes to video script.
 - Spark blind-score check confirmed clicking `待盲评` writes `skill_score`, displays dimension chips, keeps service status untouched, and sorts scored sparks above pending sparks.
 - Demo-flow check confirmed one click can produce `灵感固化卡`, `审核结果`, `视频脚本`, `发布文案`, and `静态页文案` in the output board with no browser console errors.
+- Demo-polish check confirmed the first view shows more ranked sparks, details are collapsed by default, newly scored sparks auto-expand, and `生成演示样本` provides in-progress/completion feedback.

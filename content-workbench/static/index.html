@@ -331,7 +331,7 @@
       border: 1px solid var(--line);
       border-radius: 9px;
       background: var(--panel-soft);
-      padding: 10px;
+      padding: 9px;
       font-size: 13px;
       transition: border-color .16s ease, background .16s ease, transform .16s ease;
     }
@@ -358,6 +358,44 @@
       margin-top: 6px;
       line-height: 1.5;
       overflow-wrap: anywhere;
+    }
+
+    .spark-title {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .spark-card.expanded .spark-title {
+      display: block;
+      overflow: visible;
+    }
+
+    .spark-source {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .rank-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 26px;
+      height: 22px;
+      border-radius: 999px;
+      background: #2f3a33;
+      color: #fffdfa;
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .spark-source .tiny {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .output-title {
@@ -445,6 +483,18 @@
       box-shadow: 0 8px 18px rgba(199, 81, 47, .09);
     }
 
+    .starter-hint.demo {
+      border-style: solid;
+      background: #2f3a33;
+      color: #fffdfa;
+      font-weight: 720;
+    }
+
+    .starter-hint.demo:hover {
+      background: #26302a;
+      box-shadow: 0 12px 26px rgba(47, 58, 51, .16);
+    }
+
     .toast {
       position: fixed;
       z-index: 40;
@@ -522,6 +572,21 @@
     .score-pill:disabled {
       cursor: wait;
       opacity: .72;
+    }
+
+    .spark-details {
+      display: none;
+    }
+
+    .spark-card.expanded .spark-details {
+      display: block;
+    }
+
+    .detail-toggle {
+      margin-top: 8px;
+      min-height: 26px;
+      padding: 4px 7px;
+      font-size: 11px;
     }
 
     .title-options {
@@ -829,7 +894,7 @@
               <button class="starter-hint" data-prompt="我有一个选题：普通人为什么做个人IP总是半途而废？帮我先判断值不值得做。">判断一个选题值不值得做</button>
               <button class="starter-hint" data-prompt="我是做个人IP口播，平台抖音，赛道是商业诊断。请先记住这个定位。">先补充我的账号定位</button>
               <button class="starter-hint" data-prompt="基于最近的火花看板，帮我挑一个最适合今天写脚本的方向。">从火花里挑今天的脚本方向</button>
-              <button class="starter-hint" id="runDemoFlow" type="button">跑一遍演示样本流</button>
+              <button class="starter-hint demo" id="runDemoFlow" type="button">生成演示样本</button>
             </div>
           </div>
           <div class="chat-input">
@@ -968,6 +1033,7 @@
     let toastTimer = null;
     let demoRunning = false;
     const scoringSparkIds = new Set();
+    const expandedSparkIds = new Set();
     const OUTPUT_TYPES = ["灵感固化卡", "审核结果", "视频脚本", "发布文案", "静态页文案"];
 
     async function api(path, options = {}) {
@@ -1202,27 +1268,44 @@
         board.innerHTML = `<p class="muted">还没有待处理火花。直接在中间对话里输入灵感即可。</p>`;
         return;
       }
-      items.forEach((item) => {
+      items.forEach((item, index) => {
         const content = item.content || item.media_url || "(empty)";
         const evaluation = sparkEvaluation(item);
-        const isScoring = scoringSparkIds.has(sparkKey(item));
+        const key = sparkKey(item);
+        const isScoring = scoringSparkIds.has(key);
+        const isExpanded = expandedSparkIds.has(key);
         const node = document.createElement("div");
-        node.className = `spark-card ${selectedMaterial === content ? "active" : ""}`;
+        node.className = `spark-card ${isExpanded ? "expanded" : ""} ${selectedMaterial === content ? "active" : ""}`;
         node.title = [evaluation.title, ...evaluation.factors.map(scoreFactorText)].join(" / ");
         node.innerHTML = `
           <div class="score-row">
-            <span class="tiny">${escapeHtml(item.source || typeLabel(item.type))}</span>
+            <div class="spark-source">
+              <span class="rank-badge">#${index + 1}</span>
+              <span class="tiny">${escapeHtml(item.source || typeLabel(item.type))}</span>
+            </div>
             <button class="score-pill ${evaluation.state === "pending" ? "pending" : ""}" type="button" data-score-spark ${isScoring ? "disabled" : ""}>${escapeHtml(isScoring ? "盲评中" : evaluation.label)}</button>
           </div>
           <div class="spark-title">${escapeHtml(content)}</div>
-          <div class="score-breakdown">
-            ${evaluation.factors.map((factor) => `<span class="score-factor">${escapeHtml(scoreFactorText(factor))}</span>`).join("")}
+          <button class="secondary detail-toggle" type="button" data-toggle-details>${isExpanded ? "收起详情" : "详情"}</button>
+          <div class="spark-details">
+            <div class="score-breakdown">
+              ${evaluation.factors.map((factor) => `<span class="score-factor">${escapeHtml(scoreFactorText(factor))}</span>`).join("")}
+            </div>
+            ${titleOptionsHtml(item)}
           </div>
-          ${titleOptionsHtml(item)}
         `;
         node.querySelector("[data-score-spark]").addEventListener("click", async (event) => {
           event.stopPropagation();
           await blindScoreSpark(item, item.selected_title || "");
+        });
+        node.querySelector("[data-toggle-details]").addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (expandedSparkIds.has(key)) {
+            expandedSparkIds.delete(key);
+          } else {
+            expandedSparkIds.add(key);
+          }
+          renderSparkBoard();
         });
         node.querySelectorAll("[data-title-index]").forEach((button) => {
           button.addEventListener("click", async (event) => {
@@ -1268,6 +1351,7 @@
         });
         localSparks = localSparks.filter((spark) => sparkKey(spark) !== key && spark.content !== result.item.content);
         inboxItems = [result.item, ...inboxItems.filter((spark) => spark.id !== result.item.id)];
+        expandedSparkIds.add(sparkKey(result.item));
         await loadInbox();
         await loadFiles();
         renderSparkBoard();
@@ -1289,6 +1373,9 @@
     async function runDemoFlow() {
       if (demoRunning) return;
       demoRunning = true;
+      const demoButton = $("runDemoFlow");
+      demoButton.disabled = true;
+      demoButton.textContent = "演示生成中...";
       hideStarterHints();
       const topic = "普通人为什么做个人IP总是半途而废";
       showToast("开始生成演示流");
@@ -1310,11 +1397,14 @@
         await runDemoStep(`生成静态页文案：${topic}`);
         await loadInbox();
         await loadFiles();
+        addMessage("agent", "演示样本已生成：左侧有盲评分火花榜，右侧有五类产物卡，可以直接打开、复制或继续生成。");
         showToast("演示流已生成");
       } catch (error) {
         setStatus(`演示流失败：${error.message}`, false);
       } finally {
         demoRunning = false;
+        demoButton.disabled = false;
+        demoButton.textContent = "生成演示样本";
       }
     }
 

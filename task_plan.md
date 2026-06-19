@@ -112,6 +112,14 @@ Clean Entry UI Verified
 - [x] Verify the browser path and commit only workbench/planning files.
 - **Status:** complete
 
+### Phase 13: Demo Mode Polish
+- [x] Create rollback tag `before-demo-mode-polish`.
+- [x] Make spark cards default to compact ranking rows so more inspirations are visible on first glance.
+- [x] Keep score dimensions and title candidates behind a `详情` toggle, with newly scored sparks auto-expanded once.
+- [x] Restyle the demo entry as a clear `生成演示样本` action with in-progress and completion feedback.
+- [x] Verify compact ranking, detail expansion, blind-score auto expansion, demo flow completion, and browser console health.
+- **Status:** complete
+
 ## Key Questions
 1. Should the mini-program be a full AI workbench? Answer: no, it is only a quick inspiration capture and sync entry.
 2. Should v1 be SaaS-first? Answer: no, v1 is local-first with light cloud for sync and subscription.

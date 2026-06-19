@@ -287,3 +287,13 @@
   - `python -m py_compile content-workbench/main.py`
   - `git diff --check -- content-workbench/main.py content-workbench/static/index.html task_plan.md progress.md`
   - Playwright verified clickable `待盲评`, score writeback, sorted spark board, five output-board categories, completed demo flow, and no browser console errors.
+
+### Phase 13: Demo Mode Polish
+- **Status:** complete
+- Actions taken:
+  - Created rollback tag `before-demo-mode-polish`.
+  - Changed spark cards into compact ranked rows by default: rank, source, title, and score/pending status stay visible.
+  - Moved dimensions and title candidates behind a `详情` toggle; newly scored sparks auto-expand so the user can inspect why the score changed.
+  - Restyled the starter demo entry as `生成演示样本` and added in-progress/completion feedback.
+- Verification:
+  - Playwright confirmed compact cards default to zero visible detail panels, ranking badges display, detail toggle opens details, blind scoring auto-expands the scored card, demo flow finishes, all five output categories remain visible, and browser console has no errors.
