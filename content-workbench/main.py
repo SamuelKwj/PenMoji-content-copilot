@@ -24,6 +24,7 @@ STATIC_ROOT = APP_ROOT / "static"
 DATA_ROOT = Path(os.environ.get("CONTENT_WORKBENCH_HOME", Path.home() / ".content-workbench"))
 CONFIG_PATH = DATA_ROOT / "config.json"
 INBOX_PATH = DATA_ROOT / "inbox.jsonl"
+WORKFLOW_RUNS_PATH = DATA_ROOT / "workflow_runs.jsonl"
 CONVERSATIONS_DIR = DATA_ROOT / "conversations"
 LEGACY_DEFAULT_PROJECT_PATH = WORKSPACE_ROOT / "Content Creator Pipeline"
 DEFAULT_PROJECT_PATH = DATA_ROOT / "projects" / "default-content-project"
@@ -37,6 +38,8 @@ DELIVERABLE_LABELS = {
     "video_script": "视频脚本",
     "text_pack": "标题/发布文字",
     "static_page": "静态页文案",
+    "publish_record": "发布登记",
+    "retro": "复盘结果",
 }
 SPARK_RUBRIC = [
     {"key": "HP", "label": "钩子强度", "weight": 1.5},
@@ -162,6 +165,14 @@ def append_jsonl(path: Path, item: dict) -> None:
 def rewrite_jsonl(path: Path, items: list[dict]) -> None:
     text = "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in items)
     atomic_write_text(path, text)
+
+
+def read_workflow_runs() -> list[dict]:
+    return read_jsonl(WORKFLOW_RUNS_PATH)
+
+
+def rewrite_workflow_runs(items: list[dict]) -> None:
+    rewrite_jsonl(WORKFLOW_RUNS_PATH, items)
 
 
 def update_inbox_item(item_id: str, updates: dict) -> dict | None:
@@ -919,6 +930,8 @@ def write_deliverable_artifacts(
         "video_script": "video-script.md",
         "text_pack": "text-pack.md",
         "static_page": "static-page.md",
+        "publish_record": "publish-record.md",
+        "retro": "retro.md",
     }
     for key, content in rendered.items():
         path = artifact_dir / name_map.get(key, f"{key}.md")
@@ -944,6 +957,247 @@ def write_deliverable_artifacts(
     atomic_write_text(manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2))
     files.append({"type": "manifest", "label": "Manifest", "path": str(manifest_path)})
     return files
+
+
+def flow_id_from_source(topic: str, source: dict | None = None) -> str:
+    source_data = source if isinstance(source, dict) else {}
+    return source_data.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
+
+
+def artifact_paths(artifacts: list[dict], wanted_type: str | None = None) -> list[str]:
+    return [
+        entry["path"]
+        for entry in artifacts
+        if entry.get("type") != "manifest" and (wanted_type is None or entry.get("type") == wanted_type)
+    ]
+
+
+def lock_prediction_run(topic: str, prediction_text: str, artifacts: list[dict], source: dict | None = None) -> dict:
+    flow_id = flow_id_from_source(topic, source)
+    source_data = source if isinstance(source, dict) else {}
+    run = {
+        "id": str(uuid.uuid4()),
+        "flow_id": flow_id,
+        "flow_topic": source_data.get("flow_topic") or topic,
+        "inbox_id": source_data.get("inbox_id", ""),
+        "demo": bool(source_data.get("demo")),
+        "status": "predicted",
+        "created_at": now_iso(),
+        "predicted_at": now_iso(),
+        "prediction_hash": hashlib.sha256(prediction_text.encode("utf-8")).hexdigest(),
+        "prediction_paths": artifact_paths(artifacts, "prediction"),
+        "artifact_paths": artifact_paths(artifacts),
+        "immutable_prediction": True,
+    }
+    append_jsonl(WORKFLOW_RUNS_PATH, run)
+    return run
+
+
+def find_latest_workflow_run(flow_id: str = "", topic: str = "") -> dict | None:
+    runs = read_workflow_runs()
+    matches = []
+    for run in runs:
+        if flow_id and run.get("flow_id") == flow_id:
+            matches.append(run)
+        elif topic and (run.get("flow_topic") == topic or run.get("topic") == topic):
+            matches.append(run)
+    if not matches:
+        return None
+    return sorted(matches, key=lambda item: item.get("created_at", ""), reverse=True)[0]
+
+
+def update_workflow_run(run_id: str, updates: dict) -> dict | None:
+    runs = read_workflow_runs()
+    updated = None
+    for run in runs:
+        if run.get("id") == run_id:
+            locked_fields = {
+                "prediction_hash",
+                "prediction_paths",
+                "predicted_at",
+                "immutable_prediction",
+            }
+            for key, value in updates.items():
+                if key in locked_fields and key in run:
+                    continue
+                run[key] = value
+            updated = run
+            break
+    if updated:
+        rewrite_workflow_runs(runs)
+    return updated
+
+
+def render_publish_record(topic: str, publish: dict, run: dict | None = None) -> str:
+    metrics = publish.get("initial_metrics") if isinstance(publish.get("initial_metrics"), dict) else {}
+    metric_rows = "\n".join(f"- {key}: {value}" for key, value in metrics.items()) or "- 暂无"
+    prediction_hash = run.get("prediction_hash", "") if run else ""
+    return f"""# 发布登记
+
+主题：{topic}
+
+平台：{publish.get("platform") or "未填写"}
+
+发布链接：{publish.get("url") or "未填写"}
+
+发布时间：{publish.get("published_at") or ""}
+
+关联预测 Hash：{prediction_hash or "未找到预测记录"}
+
+初始数据：
+{metric_rows}
+
+备注：
+{publish.get("notes") or "无"}
+
+下一步：拿到播放、点赞、评论、收藏等数据后生成复盘。
+"""
+
+
+def render_retro(topic: str, metrics: dict, run: dict | None = None, notes: str = "") -> str:
+    views = int(metrics.get("views") or 0)
+    likes = int(metrics.get("likes") or 0)
+    comments = int(metrics.get("comments") or 0)
+    saves = int(metrics.get("saves") or 0)
+    shares = int(metrics.get("shares") or 0)
+    engagement = likes + comments + saves + shares
+    engagement_rate = round(engagement / views * 100, 2) if views else 0
+    prediction_hash = run.get("prediction_hash", "") if run else ""
+    verdict = "继续放大" if views >= 5000 or engagement_rate >= 5 else "需要重写钩子/案例" if views < 1000 else "可小改再测"
+    return f"""# 发布复盘
+
+主题：{topic}
+
+关联预测 Hash：{prediction_hash or "未找到预测记录"}
+
+数据：
+- 播放：{views}
+- 点赞：{likes}
+- 评论：{comments}
+- 收藏：{saves}
+- 分享：{shares}
+- 互动率：{engagement_rate}%
+
+复盘判断：{verdict}
+
+观察：
+- 播放低时，优先检查开头 3 秒是否具体、是否有反常识判断。
+- 播放还行但互动低时，优先检查结尾有没有自测问题或评论入口。
+- 收藏/分享高于评论时，说明内容更像方法论，可以扩展成静态页或系列。
+
+用户备注：
+{notes or "无"}
+
+下一步建议：
+1. 把这次表现写回选题判断标准。
+2. 保留有效标题结构，重写弱开头。
+3. 若互动率高，继续生成同主题第二条脚本。
+"""
+
+
+def register_publish(payload: dict, config: dict) -> dict:
+    topic = extract_topic(payload.get("topic") or payload.get("title") or payload.get("url") or "未命名发布")
+    flow_id = payload.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
+    run = find_latest_workflow_run(flow_id=flow_id, topic=topic)
+    publish = {
+        "url": payload.get("url", ""),
+        "platform": payload.get("platform", "douyin"),
+        "published_at": payload.get("published_at") or now_iso(),
+        "registered_at": now_iso(),
+        "notes": payload.get("notes", ""),
+        "initial_metrics": payload.get("initial_metrics") if isinstance(payload.get("initial_metrics"), dict) else {},
+    }
+    if run is None:
+        run = {
+            "id": str(uuid.uuid4()),
+            "flow_id": flow_id,
+            "flow_topic": topic,
+            "status": "publish_only",
+            "created_at": now_iso(),
+            "immutable_prediction": False,
+        }
+        append_jsonl(WORKFLOW_RUNS_PATH, run)
+    source = {
+        "flow_id": run.get("flow_id") or flow_id,
+        "flow_topic": run.get("flow_topic") or topic,
+        "workflow_run_id": run.get("id", ""),
+    }
+    if run.get("inbox_id"):
+        source["inbox_id"] = run.get("inbox_id")
+    if run.get("demo"):
+        source["demo"] = True
+    rendered = {"publish_record": render_publish_record(topic, publish, run)}
+    artifacts = write_deliverable_artifacts(
+        f"登记发布：{topic}",
+        "publish_registration",
+        ["publish_record"],
+        rendered,
+        "",
+        config,
+        source=source,
+    )
+    updated = update_workflow_run(
+        run["id"],
+        {
+            "status": "published",
+            "published_at": publish["published_at"],
+            "publish": publish,
+            "artifact_paths": [*run.get("artifact_paths", []), *artifact_paths(artifacts)],
+        },
+    ) or run
+    return {"run": updated, "artifacts": artifacts}
+
+
+def generate_retro(payload: dict, config: dict) -> dict:
+    topic = extract_topic(payload.get("topic") or payload.get("url") or "未命名发布")
+    flow_id = payload.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
+    run = find_latest_workflow_run(flow_id=flow_id, topic=topic)
+    metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
+    notes = payload.get("notes", "")
+    source = {
+        "flow_id": run.get("flow_id") if run else flow_id,
+        "flow_topic": run.get("flow_topic") if run else topic,
+        "workflow_run_id": run.get("id", "") if run else "",
+    }
+    if run and run.get("inbox_id"):
+        source["inbox_id"] = run.get("inbox_id")
+    if run and run.get("demo"):
+        source["demo"] = True
+    rendered = {"retro": render_retro(topic, metrics, run, notes)}
+    artifacts = write_deliverable_artifacts(
+        f"生成复盘：{topic}",
+        "retro",
+        ["retro"],
+        rendered,
+        "",
+        config,
+        source=source,
+    )
+    if run:
+        updated = update_workflow_run(
+            run["id"],
+            {
+                "status": "retrospected",
+                "retro_at": now_iso(),
+                "retro_metrics": metrics,
+                "retro_notes": notes,
+                "artifact_paths": [*run.get("artifact_paths", []), *artifact_paths(artifacts)],
+            },
+        ) or run
+    else:
+        updated = {
+            "id": str(uuid.uuid4()),
+            "flow_id": flow_id,
+            "flow_topic": topic,
+            "status": "retro_only",
+            "created_at": now_iso(),
+            "retro_at": now_iso(),
+            "retro_metrics": metrics,
+            "retro_notes": notes,
+            "artifact_paths": artifact_paths(artifacts),
+        }
+        append_jsonl(WORKFLOW_RUNS_PATH, updated)
+    return {"run": updated, "artifacts": artifacts}
 
 
 def next_step_for(deliverables: list[str], topic: str) -> dict:
@@ -986,6 +1240,9 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None) ->
     artifacts = write_deliverable_artifacts(text, stage, deliverables, rendered, llm_text, config, source)
     if artifacts:
         worklog.append(f"已落盘 {len(artifacts)} 个产物文件。")
+    if "prediction" in deliverables and rendered.get("prediction"):
+        run = lock_prediction_run(topic, rendered["prediction"], artifacts, source)
+        worklog.append(f"已锁定发布预测记录：{run['id']}。")
 
     next_step = next_step_for(deliverables, topic)
 
@@ -1066,6 +1323,8 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             self.send_json({"items": read_jsonl(INBOX_PATH)})
         elif path == "/api/files":
             self.send_json(list_project_files(load_config(include_secret=False)))
+        elif path == "/api/workflow/runs":
+            self.send_json({"items": read_workflow_runs()})
         elif path == "/api/license/status":
             config = load_config(include_secret=False)
             license_data = config.get("license", {})
@@ -1134,6 +1393,14 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
                 return
             self.send_json({"status": "ok", "path": str(file_path)})
+        elif path == "/api/workflow/publish":
+            config = load_config(include_secret=False)
+            result = register_publish(payload, config)
+            self.send_json({"status": "ok", **result})
+        elif path == "/api/workflow/retro":
+            config = load_config(include_secret=False)
+            result = generate_retro(payload, config)
+            self.send_json({"status": "ok", **result})
         elif path == "/api/inbox":
             item = normalize_inspiration(payload)
             append_jsonl(INBOX_PATH, item)

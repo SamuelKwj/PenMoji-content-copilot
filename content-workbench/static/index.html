@@ -1086,7 +1086,7 @@
     const scoringSparkIds = new Set();
     const expandedSparkIds = new Set();
     const DEMO_TOPIC = "普通人为什么做个人IP总是半途而废";
-    const OUTPUT_TYPES = ["灵感固化卡", "审核结果", "视频脚本", "发布文案", "静态页文案"];
+    const OUTPUT_TYPES = ["灵感固化卡", "审核结果", "发布预测", "视频脚本", "发布文案", "静态页文案", "发布登记", "复盘结果"];
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -1701,8 +1701,11 @@
       const lower = name.toLowerCase();
       const type = [
         [/spark|card|idea|brief/, "灵感固化卡"],
-        [/review|audit|score|predict|topic|analysis/, "审核结果"],
+        [/review|audit|score|topic|analysis/, "审核结果"],
+        [/prediction|predict/, "发布预测"],
         [/video|script|speaking|storyboard/, "视频脚本"],
+        [/publish-record|publish_record/, "发布登记"],
+        [/retro|review-after|postmortem/, "复盘结果"],
         [/publish|copy|title|text/, "发布文案"],
         [/static|page/, "静态页文案"],
       ].find(([pattern]) => pattern.test(lower))?.[1] || groupLabel(file.group || "");
@@ -1783,11 +1786,18 @@
           <div class="output-actions"></div>
         `;
         const actions = node.querySelector(".output-actions");
-        [
+        const actionItems = [
           { label: "打开", handler: () => openOutputFile(latest.path) },
           { label: "复制", handler: () => copyOutputFile(latest.path) },
           { label: "继续生成", handler: () => continueFromFile(latest.path, card.type, `${card.type}：${latest.name}`) }
-        ].forEach((action) => {
+        ];
+        if (card.type === "发布预测") {
+          actionItems.push({ label: "登记发布", handler: () => registerPublishFromFile(latest) });
+        }
+        if (card.type === "发布登记") {
+          actionItems.push({ label: "生成复盘", handler: () => generateRetroFromFile(latest) });
+        }
+        actionItems.forEach((action) => {
           const button = document.createElement("button");
           button.className = "secondary";
           button.type = "button";
@@ -1832,6 +1842,64 @@
       showToast("已把产物放入对话");
     }
 
+    function outputContextPayload(file) {
+      const manifest = file.manifest || {};
+      const source = manifestSource(file);
+      const topic = source.flow_topic || manifest.topic || activeOutputContext?.topic || "";
+      return {
+        flow_id: source.flow_id || activeOutputContext?.flowId || flowIdForTopic(topic),
+        topic,
+      };
+    }
+
+    async function registerPublishFromFile(file) {
+      const context = outputContextPayload(file);
+      const url = window.prompt("发布链接（可先留空）", "");
+      if (url === null) return;
+      const platform = window.prompt("发布平台", "douyin");
+      if (platform === null) return;
+      const notes = window.prompt("发布备注", "") || "";
+      await api("/api/workflow/publish", {
+        method: "POST",
+        body: JSON.stringify({
+          ...context,
+          url,
+          platform: platform || "douyin",
+          notes,
+        }),
+      });
+      await loadFiles();
+      showToast("发布登记已生成");
+    }
+
+    function parseRetroMetrics(raw) {
+      const values = String(raw || "").split(/[,，\s]+/).map((item) => Number.parseInt(item, 10) || 0);
+      return {
+        views: values[0] || 0,
+        likes: values[1] || 0,
+        comments: values[2] || 0,
+        saves: values[3] || 0,
+        shares: values[4] || 0,
+      };
+    }
+
+    async function generateRetroFromFile(file) {
+      const context = outputContextPayload(file);
+      const raw = window.prompt("输入数据：播放 点赞 评论 收藏 分享", "0 0 0 0 0");
+      if (raw === null) return;
+      const notes = window.prompt("复盘备注", "") || "";
+      await api("/api/workflow/retro", {
+        method: "POST",
+        body: JSON.stringify({
+          ...context,
+          metrics: parseRetroMetrics(raw),
+          notes,
+        }),
+      });
+      await loadFiles();
+      showToast("复盘结果已生成");
+    }
+
     async function copyText(text) {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
@@ -1873,9 +1941,12 @@
       return {
         "灵感固化卡": "可作为下一轮脚本或审核的起点",
         "审核结果": "判断值不值得做，并保留风险与改法",
+        "发布预测": "发布前的判断已锁定，可登记真实发布",
         "视频脚本": "可继续生成分镜、口播或剪辑方案",
         "发布文案": "标题、简介和平台发布文案",
-        "静态页文案": "适合沉淀成长文或展示页"
+        "静态页文案": "适合沉淀成长文或展示页",
+        "发布登记": "记录真实链接和发布时间，可生成复盘",
+        "复盘结果": "把发布数据反写为下一轮判断"
       }[type] || "可继续放入对话生成下一步";
     }
 

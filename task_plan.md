@@ -4,7 +4,7 @@
 Turn the existing Content Creator Pipeline skill bundle into a beginner-friendly local script workflow assistant for inspiration capture, spark solidification, review, scoring, prediction, video-script writing, and text/static-page material generation.
 
 ## Current Phase
-Demo Readiness Hardening Complete
+Publish Retro Loop Complete
 
 ## Phases
 
@@ -147,6 +147,15 @@ Demo Readiness Hardening Complete
 - [x] Verify syntax, diff hygiene, browser demo flow, reset safety, and unchanged mini-program dirty files.
 - **Status:** complete
 
+### Phase 17: Publish Retro Loop
+- [x] Create rollback tag `before-publish-retro-loop`.
+- [x] Add local workflow run records for locked predictions.
+- [x] Add publish registration API and generated `发布登记` artifacts.
+- [x] Add retro API and generated `复盘结果` artifacts.
+- [x] Add output-board actions for `发布预测 -> 登记发布 -> 生成复盘`.
+- [x] Verify syntax, diff hygiene, API flow, and unchanged mini-program dirty files.
+- **Status:** complete
+
 ## Key Questions
 1. Should the mini-program be a full AI workbench? Answer: no, it is only a quick inspiration capture and sync entry.
 2. Should v1 be SaaS-first? Answer: no, v1 is local-first with light cloud for sync and subscription.
@@ -175,6 +184,7 @@ Demo Readiness Hardening Complete
 | Mini-program has only static/devtool validation | Import `mobile-miniapp/` in WeChat DevTools for real device/devtool acceptance. |
 | License behavior is mock-backed | Next pass connects to a production subscription/license backend. |
 | Desktop packaging is not implemented | Next pass adds Windows service and installer work. |
+| Publish/retro loop is local-only | Keep it local for MVP credibility; later connect metrics import and real platform data. |
 
 ## Notes
 - The current workbench is an executable local MVP for guided script workflow, not the full commercial product.

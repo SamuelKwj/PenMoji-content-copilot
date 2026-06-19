@@ -341,3 +341,19 @@
   - Browser demo validation confirmed `演示模式` shows only the current sample chain with `灵感固化卡`, `审核结果`, `视频脚本`, `发布文案`, and `静态页文案`; `清理演示` returns to the global view without deleting normal artifacts.
   - Cleanup confirmed `.verify-runtime` is absent and validation ports `7888`, `7889`, and `7890` are no longer listening.
   - `mobile-miniapp/project.config.json` and `mobile-miniapp/project.private.config.json` were not modified by this phase.
+
+### Phase 17: Publish Retro Loop
+- **Status:** complete
+- Actions taken:
+  - Created rollback tag `before-publish-retro-loop`.
+  - Added `workflow_runs.jsonl` as the local run ledger for prediction/publish/retro state.
+  - Locked generated predictions by storing prediction hash and prediction artifact path instead of rewriting prediction content later.
+  - Added `/api/workflow/runs`, `/api/workflow/publish`, and `/api/workflow/retro`.
+  - Added `发布登记` and `复盘结果` artifact generation with shared `flow_id` metadata.
+  - Added right-side output-board actions so `发布预测` can register a real publish, and `发布登记` can generate a retro from playback/engagement data.
+- Verification:
+  - `python -m py_compile content-workbench\main.py content-workbench\cloud_mock.py` passed.
+  - `git diff --check -- content-workbench\main.py content-workbench\static\index.html task_plan.md progress.md findings.md` passed with only existing CRLF warnings.
+  - Isolated API validation on port `7891` generated `prediction.md`, then `publish-record.md`, then `retro.md` under the same `flow_id`.
+  - Workflow run validation confirmed the run status advanced to `retrospected` while `immutable_prediction` stayed true.
+  - `mobile-miniapp/project.config.json` and `mobile-miniapp/project.private.config.json` were not modified by this phase.
