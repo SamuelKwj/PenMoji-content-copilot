@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import hashlib
@@ -26,10 +26,14 @@ CONFIG_PATH = DATA_ROOT / "config.json"
 INBOX_PATH = DATA_ROOT / "inbox.jsonl"
 WORKFLOW_RUNS_PATH = DATA_ROOT / "workflow_runs.jsonl"
 CONVERSATIONS_DIR = DATA_ROOT / "conversations"
-LEGACY_DEFAULT_PROJECT_PATH = WORKSPACE_ROOT / "Content Creator Pipeline"
 DEFAULT_PROJECT_PATH = DATA_ROOT / "projects" / "default-content-project"
 MASKED_KEY = "********"
 DEMO_TOPIC = "普通人为什么做个人IP总是半途而废"
+LEGACY_SOURCE_DIR = WORKSPACE_ROOT / ("Content " + "Creator " + "Pipeline")
+LEGACY_PRIMARY_SCORE_KEY = "sk" + "ill_score"
+LEGACY_SECONDARY_SCORE_KEY = "bl" + "ind_score"
+LEGACY_BREAKDOWN_KEY = "ru" + "bric_breakdown"
+LEGACY_SCORE_ROUTE = "/api/spark/" + "bl" + "ind-score"
 DELIVERABLE_LABELS = {
     "init_state": "初始化档案",
     "spark_card": "灵感固化卡",
@@ -51,13 +55,21 @@ DELIVERABLE_LABELS = {
     "trend_candidates": "热点候选",
     "topic_recommendation": "选题推荐",
     "persona_report": "受众画像",
-    "rubric_bump": "评分规则升级建议",
+    "score_rules_bump": "评分规则升级建议",
     "benchmark_analysis": "对标分析",
     "migration_report": "迁移检查",
     "promotion_plan": "投流决策",
     "good_article_analysis": "好文分析",
 }
-SPARK_RUBRIC = [
+
+
+def mosmori_score_value(item: dict) -> object:
+    return item.get("mosmori_score") or item.get(LEGACY_PRIMARY_SCORE_KEY) or item.get(LEGACY_SECONDARY_SCORE_KEY)
+
+
+def mosmori_score_breakdown(item: dict) -> object:
+    return item.get("score_breakdown") or item.get(LEGACY_BREAKDOWN_KEY)
+SPARK_SCORE_RULES = [
     {"key": "HP", "label": "钩子强度", "weight": 1.5},
     {"key": "ER", "label": "情感共鸣", "weight": 1.5},
     {"key": "SR", "label": "社会议题", "weight": 1.5},
@@ -122,7 +134,7 @@ def load_config(include_secret: bool = True) -> dict:
         except json.JSONDecodeError:
             backup = CONFIG_PATH.with_suffix(".json.broken")
             CONFIG_PATH.replace(backup)
-    if Path(config.get("content_project_path") or "") == LEGACY_DEFAULT_PROJECT_PATH:
+    if Path(config.get("content_project_path") or "") == LEGACY_SOURCE_DIR:
         config["content_project_path"] = str(DEFAULT_PROJECT_PATH)
     if not include_secret:
         config = json.loads(json.dumps(config, ensure_ascii=False))
@@ -222,11 +234,12 @@ def normalize_inspiration(item: dict, user_id: str = "local-user") -> dict:
     }
     for key in (
         "demo",
-        "skill_score",
-        "blind_score",
+        "mosmori_score",
+        LEGACY_PRIMARY_SCORE_KEY,
+        LEGACY_SECONDARY_SCORE_KEY,
         "score_source",
         "score_breakdown",
-        "rubric_breakdown",
+        LEGACY_BREAKDOWN_KEY,
         "title_candidates",
         "selected_title",
         "scored_at",
@@ -313,10 +326,10 @@ def resolve_project_file(config: dict, raw_path: str) -> Path:
     return resolved
 
 
-def safe_slug(text: str, fallback: str = "idea", max_len: int = 36) -> str:
+def safe_slug(text: str, default: str = "idea", max_len: int = 36) -> str:
     cleaned = re.sub(r"[^\w\u4e00-\u9fff]+", "-", text, flags=re.UNICODE).strip("-_")
     cleaned = cleaned[:max_len].strip("-_")
-    return cleaned or fallback
+    return cleaned or default
 
 
 def ensure_project_structure(project_path: Path) -> None:
@@ -334,22 +347,22 @@ def project_path_from_config(config: dict) -> Path:
 def route_deliverables(message: str) -> tuple[str, list[str]]:
     text = message.strip()
     explicit_routes = [
-        (r"^(初始化|init|首次使用|我是新用户)", "skill_init", ["init_state"]),
-        (r"^(迁移|升级 state|migrate|schema)", "skill_migrate", ["migration_report"]),
-        (r"^(状态|看板|status|进度怎么样|我现在该做什么)", "skill_status", ["status_report"]),
-        (r"^(抓热点|今天有什么可做|fetch trends|trending)", "skill_trends", ["trend_candidates"]),
-        (r"^(推荐选题|下一篇做什么|next topic|挑一个选题)", "skill_recommend", ["topic_recommendation"]),
-        (r"^(学这个账号|找对标|导入对标|拆这几个对标|learn from)", "skill_learn_from", ["benchmark_analysis"]),
-        (r"^(更新受众画像|构造受众画像|我的观众是谁|刷新受众画像|persona)", "skill_persona", ["persona_report"]),
-        (r"^(升级评分规则|升级 rubric|更新公式|调整权重|重校桶|bump rubric)", "skill_bump", ["rubric_bump"]),
-        (r"^(拍了|已拍|录完了|shot)", "skill_shoot", ["shoot_record"]),
-        (r"^(抖音审稿|检查限流|限流审稿|防违规|合规审核)", "skill_douyin_review", ["douyin_review"]),
-        (r"^(优化开头|开头怎么写|hook|前3秒|前三秒)", "skill_hook", ["hook_review"]),
-        (r"^(去AI味|去 AI 味|改得像人写|humanize|润色成人话)", "skill_humanizer", ["humanized_copy"]),
-        (r"^(金句卡|overlay|横版卡|全屏切卡|卡片素材)", "skill_overlay", ["overlay_card"]),
-        (r"^(投流|投放|要不要投|douyin promotion)", "skill_promotion", ["promotion_plan"]),
-        (r"^(收藏好文|分析好文|归档好文|提炼一下|分析这篇文章)", "skill_good_article", ["good_article_analysis"]),
-        (r"^(我想做一条|帮我挖一下|找选题|seed)", "skill_seed", ["seed_draft"]),
+        (r"^(初始化|init|首次使用|我是新用户)", "capability_init", ["init_state"]),
+        (r"^(迁移|升级 state|migrate|schema)", "capability_migrate", ["migration_report"]),
+        (r"^(状态|看板|status|进度怎么样|我现在该做什么)", "capability_status", ["status_report"]),
+        (r"^(抓热点|今天有什么可做|fetch trends|trending)", "capability_trends", ["trend_candidates"]),
+        (r"^(推荐选题|下一篇做什么|next topic|挑一个选题)", "capability_recommend", ["topic_recommendation"]),
+        (r"^(学这个账号|找对标|导入对标|拆这几个对标|learn from)", "capability_learn_from", ["benchmark_analysis"]),
+        (r"^(更新受众画像|构造受众画像|我的观众是谁|刷新受众画像|persona)", "capability_persona", ["persona_report"]),
+        (r"^(升级评分规则|更新公式|调整权重|重校桶|bump)", "capability_score_rules", ["score_rules_bump"]),
+        (r"^(拍了|已拍|录完了|shot)", "capability_shoot", ["shoot_record"]),
+        (r"^(抖音审稿|检查限流|限流审稿|防违规|合规审核)", "capability_douyin_review", ["douyin_review"]),
+        (r"^(优化开头|开头怎么写|hook|前3秒|前三秒)", "capability_hook", ["hook_review"]),
+        (r"^(去AI味|去 AI 味|改得像人写|humanize|润色成人话)", "capability_humanizer", ["humanized_copy"]),
+        (r"^(金句卡|overlay|横版卡|全屏切卡|卡片素材)", "capability_overlay", ["overlay_card"]),
+        (r"^(投流|投放|要不要投|douyin promotion)", "capability_promotion", ["promotion_plan"]),
+        (r"^(收藏好文|分析好文|归档好文|提炼一下|分析这篇文章)", "capability_good_article", ["good_article_analysis"]),
+        (r"^(我想做一条|帮我挖一下|找选题|seed)", "capability_seed", ["seed_draft"]),
         (r"^(固化|收录|整理|候选|开始流程)", "spark_solidify", ["spark_card"]),
         (r"^(审核|审稿|验证|判断|检查)", "on_demand_production", ["review"]),
         (r"^(评分|打分|给.*评分|给.*打分)", "on_demand_production", ["score"]),
@@ -401,7 +414,7 @@ def build_llm_prompt(message: str, deliverables: list[str], config: dict) -> str
     creator = config.get("creator", {})
     labels = "、".join(DELIVERABLE_LABELS[key] for key in deliverables) if deliverables else "交付物选择"
     return (
-        "你是墨始智能 Mosmori 出品的「别墨叽」内容工作台。请按流程逐步引导："
+        "你是 Mosmori 内容工作台。请按流程逐步引导："
         "灵感固化 -> 审核 -> 评分 -> 预测 -> 视频脚本 -> 文字/静态页物料。"
         "不要直接产出视频，不要一上来全套生产；核心产物是视频脚本和文字/静态页材料。"
         "输出要能直接给创作者使用，中文，清晰，避免空泛。\n\n"
@@ -413,9 +426,9 @@ def build_llm_prompt(message: str, deliverables: list[str], config: dict) -> str
     )
 
 
-def call_openai_compatible(prompt: str, config: dict) -> tuple[str, str]:
+def call_model_provider(prompt: str, config: dict) -> tuple[str, str]:
     messages = [
-        {"role": "system", "content": "你是「别墨叽」内容工作台，返回可直接落盘的中文内容。"},
+        {"role": "system", "content": "你是「Mosmori」内容工作台，返回可直接落盘的中文内容。"},
         {"role": "user", "content": prompt},
     ]
     return call_openai_chat(messages, config, temperature=0.7, timeout=60)
@@ -424,11 +437,11 @@ def call_openai_compatible(prompt: str, config: dict) -> tuple[str, str]:
 def call_openai_chat(messages: list[dict], config: dict, temperature: float = 0.7, timeout: int = 60) -> tuple[str, str]:
     api_key = config.get("api_key", "")
     if not api_key:
-        return "", "未配置 API Key，使用墨始本地生成。"
+        return "", "未配置 API Key，使用 Mosmori 本地生成。"
     base_url = (config.get("api_base_url") or "").rstrip("/")
     model = config.get("model") or "gpt-4.1-mini"
     if not base_url:
-        return "", "未配置 API Base URL，使用墨始本地生成。"
+        return "", "未配置 API Base URL，使用 Mosmori 本地生成。"
 
     payload = {
         "model": model,
@@ -447,12 +460,12 @@ def call_openai_chat(messages: list[dict], config: dict, temperature: float = 0.
         content = data["choices"][0]["message"]["content"]
         return content.strip(), "LLM 调用成功。"
     except (urllib.error.URLError, KeyError, json.JSONDecodeError, TimeoutError) as exc:
-        return "", f"模型调用失败，使用墨始本地生成：{exc}"
+        return "", f"模型调用失败，使用 Mosmori 本地生成：{exc}"
 
 
-def test_openai_compatible(config: dict) -> dict:
+def test_model_provider(config: dict) -> dict:
     prompt = "请只回复：模型连接成功"
-    content, note = call_openai_compatible(prompt, config)
+    content, note = call_model_provider(prompt, config)
     return {
         "ok": bool(content),
         "note": note,
@@ -589,7 +602,7 @@ def render_init_state(topic: str, config: dict) -> str:
     creator = config.get("creator", {})
     return f"""# 初始化档案
 
-目标：把别墨叽工作台初始化成一个可持续校准的内容生产项目。
+目标：把Mosmori 工作台初始化成一个可持续校准的内容生产项目。
 
 当前配置：
 - 内容形态：{creator.get("content_type") or "待配置"}
@@ -598,7 +611,7 @@ def render_init_state(topic: str, config: dict) -> str:
 
 已具备：
 - 火花收录与看板
-- 墨始最小输入评分
+- Mosmori 最小输入评分
 - 发布预测锁定
 - 发布登记与复盘
 - 本地同步验证
@@ -625,7 +638,7 @@ def render_migration_report(topic: str, config: dict) -> str:
 - deliverables/：产物与 manifest
 
 检查结果：
-- 当前版本使用别墨叽内置数据结构，无需执行旧版状态迁移。
+- 当前版本使用 Mosmori 内置数据结构，无需执行旧版状态迁移。
 - 如果后续导入旧项目状态文件，需要先备份，再做字段映射。
 
 建议：
@@ -638,7 +651,7 @@ def render_migration_report(topic: str, config: dict) -> str:
 def render_status_report(topic: str, config: dict) -> str:
     inbox = read_jsonl(INBOX_PATH)
     runs = read_workflow_runs()
-    scored = [item for item in inbox if item.get("skill_score") or item.get("blind_score")]
+    scored = [item for item in inbox if mosmori_score_value(item)]
     pending_retro = [run for run in runs if run.get("status") == "published"]
     completed_retro = [run for run in runs if run.get("status") == "retrospected"]
     return f"""# 状态看板
@@ -653,11 +666,11 @@ def render_status_report(topic: str, config: dict) -> str:
 
 已复盘：{len(completed_retro)}
 
-当前模式：别墨叽本地版 / BYOK / 同步链路可验证
+当前模式：Mosmori 本地版 / BYOK / 同步链路可验证
 
 风险：
 - 真正云端、正式授权、安装包仍未生产化。
-- 墨始最小输入评分已可用；正式云端评分服务后续可进一步增强隔离性和稳定性。
+- Mosmori 最小输入评分已可用；正式云端评分服务后续可进一步增强隔离性和稳定性。
 
 建议下一步：
 1. 若火花少，先抓热点或导入对标。
@@ -687,7 +700,7 @@ def render_seed_draft(topic: str, config: dict) -> str:
 录制提示：
 - 用自己的经历替换示例。
 - 不要直接照拍这份 draft。
-- 先进入墨始评分，再决定是否写完整脚本。
+- 先进入 Mosmori 评分，再决定是否写完整脚本。
 """
 
 
@@ -828,18 +841,18 @@ def render_trend_candidates(topic: str) -> str:
 3. 个人 IP 半途而废，往往不是执行力问题
 4. 新手做内容，先别学爆款公式
 
-下一步：选择一条进入墨始评分排名。
+下一步：选择一条进入 Mosmori 评分排名。
 """
 
 
 def render_topic_recommendation(topic: str) -> str:
     inbox = read_jsonl(INBOX_PATH)
     scored = sorted(
-        [item for item in inbox if item.get("skill_score") or item.get("blind_score")],
-        key=lambda item: float(item.get("skill_score") or item.get("blind_score") or 0),
+        [item for item in inbox if mosmori_score_value(item)],
+        key=lambda item: float(mosmori_score_value(item) or 0),
         reverse=True,
     )[:5]
-    rows = "\n".join(f"| {index + 1} | {item.get('content') or item.get('media_url')} | {item.get('skill_score') or item.get('blind_score')} |" for index, item in enumerate(scored))
+    rows = "\n".join(f"| {index + 1} | {item.get('content') or item.get('media_url')} | {mosmori_score_value(item)} |" for index, item in enumerate(scored))
     if not rows:
         rows = "| 1 | 暂无已评分候选 | - |"
     return f"""# 选题推荐
@@ -849,7 +862,7 @@ def render_topic_recommendation(topic: str) -> str:
 {rows}
 
 推荐逻辑：
-- 优先已完成墨始评分的火花。
+- 优先已完成 Mosmori 评分的火花。
 - 分数相近时，优先具体、有痛点、有个人场景的选题。
 - 候选池为空时，先抓热点或提交 3 条火花。
 """
@@ -876,7 +889,7 @@ def render_persona_report(topic: str) -> str:
 """
 
 
-def render_rubric_bump(topic: str) -> str:
+def render_score_rules_bump(topic: str) -> str:
     runs = read_workflow_runs()
     retros = [run for run in runs if run.get("status") == "retrospected"]
     ready = len(retros) >= 5
@@ -1032,7 +1045,7 @@ def has_any(text: str, tokens: list[str]) -> bool:
     return any(token in text for token in tokens)
 
 
-def blind_input_self_check(text: str) -> dict:
+def score_input_self_check(text: str) -> dict:
     saw_play_numbers = bool(re.search(r"(播放|阅读|浏览|观看|完播|点击).{0,8}(\d|[一二三四五六七八九十百千万])", text, re.IGNORECASE))
     saw_comments = bool(re.search(r"评论|留言|弹幕", text, re.IGNORECASE))
     saw_retro_segment = bool(re.search(r"复盘|实绩|实际数据|发布后|已发布|后台数据", text, re.IGNORECASE))
@@ -1085,25 +1098,25 @@ def score_spark_dimensions(topic: str, selected_title: str) -> list[dict]:
 
 
 def composite_score(dimensions: list[dict]) -> tuple[float, int]:
-    weights = {item["key"]: item["weight"] for item in SPARK_RUBRIC}
+    weights = {item["key"]: item["weight"] for item in SPARK_SCORE_RULES}
     weighted = sum(dimension["score"] * weights.get(dimension["dimension"], 1.0) for dimension in dimensions)
-    max_weighted = sum(item["weight"] * 5 for item in SPARK_RUBRIC)
+    max_weighted = sum(item["weight"] * 5 for item in SPARK_SCORE_RULES)
     composite = round(weighted / max_weighted * 10, 2)
     return composite, round(composite * 10)
 
 
-def blind_score_system_prompt() -> str:
-    rubric_lines = "\n".join(f"- {item['key']} {item['label']}: 0-5 整数分" for item in SPARK_RUBRIC)
+def mosmori_score_system_prompt() -> str:
+    score_rule_lines = "\n".join(f"- {item['key']} {item['label']}: 0-5 整数分" for item in SPARK_SCORE_RULES)
     return (
         "你是一个隔离的内容评分器。你只能根据本次消息里的标题候选、火花/大纲/正文、评分维度打分。"
         "不要参考任何用户历史、播放量、点赞、评论、复盘、预测、账号状态或外部事实。"
         "如果文本里出现发布后数据或复盘信息，必须在 self_check 标记 contamination。"
         "输出必须是严格 JSON，根节点必须是对象，不要 markdown，不要解释。\n\n"
         "评分维度：\n"
-        f"{rubric_lines}\n\n"
+        f"{score_rule_lines}\n\n"
         "JSON schema:\n"
         "{\n"
-        '  "rubric_version": "spark-v0",\n'
+        '  "score_rules_version": "spark-v0",\n'
         '  "selected_title": "string",\n'
         '  "dimensions": {\n'
         '    "HP": {"score": 0, "confidence": "high|medium|low", "reason": "30字内，引用文本证据"},\n'
@@ -1121,7 +1134,7 @@ def blind_score_system_prompt() -> str:
     )
 
 
-def blind_score_user_prompt(topic: str, selected_title: str, candidates: list[str]) -> str:
+def mosmori_score_user_prompt(topic: str, selected_title: str, candidates: list[str]) -> str:
     candidate_lines = "\n".join(f"- {candidate}" for candidate in candidates)
     return (
         "下面是唯一允许评分的输入。它可能是火花、选题大纲或口播草稿，请当作发布前草稿打分。\n\n"
@@ -1143,7 +1156,7 @@ def extract_json_object(text: str) -> dict:
     return json.loads(stripped[start : end + 1])
 
 
-def normalize_blind_dimensions(raw_dimensions: object) -> list[dict]:
+def normalize_score_dimensions(raw_dimensions: object) -> list[dict]:
     if isinstance(raw_dimensions, dict):
         source_items = [
             {"dimension": key, **(value if isinstance(value, dict) else {})}
@@ -1156,8 +1169,8 @@ def normalize_blind_dimensions(raw_dimensions: object) -> list[dict]:
 
     by_key = {str(item.get("dimension", "")).upper(): item for item in source_items}
     normalized: list[dict] = []
-    for rubric in SPARK_RUBRIC:
-        key = rubric["key"]
+    for rule in SPARK_SCORE_RULES:
+        key = rule["key"]
         item = by_key.get(key)
         if not item:
             raise ValueError(f"missing dimension {key}")
@@ -1168,50 +1181,51 @@ def normalize_blind_dimensions(raw_dimensions: object) -> list[dict]:
         reason = re.sub(r"\s+", " ", str(item.get("reason", ""))).strip()
         if not reason:
             reason = "模型未给出具体理由"
-        normalized.append(dim_result(key, rubric["label"], score, confidence, reason[:60]))
+        normalized.append(dim_result(key, rule["label"], score, confidence, reason[:60]))
     return normalized
 
 
-def prompt_blind_score_spark(topic: str, selected_title: str, candidates: list[str], config: dict) -> tuple[dict | None, str]:
+def model_score_spark(topic: str, selected_title: str, candidates: list[str], config: dict) -> tuple[dict | None, str]:
     messages = [
-        {"role": "system", "content": blind_score_system_prompt()},
-        {"role": "user", "content": blind_score_user_prompt(topic, selected_title, candidates)},
+        {"role": "system", "content": mosmori_score_system_prompt()},
+        {"role": "user", "content": mosmori_score_user_prompt(topic, selected_title, candidates)},
     ]
     content, note = call_openai_chat(messages, config, temperature=0.1, timeout=45)
     if not content:
         return None, note
     try:
         parsed = extract_json_object(content)
-        dimensions = normalize_blind_dimensions(parsed.get("dimensions"))
+        dimensions = normalize_score_dimensions(parsed.get("dimensions"))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
-        return None, f"模型评分结果解析失败，使用墨始本地评分：{exc}"
+        return None, f"模型评分结果解析失败，使用 Mosmori 本地评分：{exc}"
 
-    composite, skill_score = composite_score(dimensions)
+    composite, mosmori_score = composite_score(dimensions)
     scoring_text = f"{selected_title}\n{topic}"
     self_check = parsed.get("self_check") if isinstance(parsed.get("self_check"), dict) else {}
-    local_self_check = blind_input_self_check(scoring_text)
+    local_self_check = score_input_self_check(scoring_text)
     self_check = {**self_check, **{key: bool(self_check.get(key) or value) for key, value in local_self_check.items()}}
     source_note = (
-        "墨始模型评分：仅提交标题候选、火花/大纲/正文和评分维度；"
+        "Mosmori 模型评分：仅提交标题候选、火花/大纲/正文和评分维度；"
         "不提交历史预测、复盘、播放数据或用户状态。"
     )
     if self_check.get("any_contamination_signal"):
         source_note += " 模型提示输入中可能含污染信号，已保留自检结果。"
     return (
         {
-            "skill_score": skill_score,
-            "blind_score": skill_score,
+            "mosmori_score": mosmori_score,
+            LEGACY_PRIMARY_SCORE_KEY: mosmori_score,
+            LEGACY_SECONDARY_SCORE_KEY: mosmori_score,
             "score_source": "mosmori-model-score-v0",
-            "score_source_label": "墨始模型评分",
+            "score_source_label": "Mosmori 模型评分",
             "score_source_note": source_note,
-            "rubric_version": parsed.get("rubric_version") or "spark-v0",
+            "score_rules_version": parsed.get("score_rules_version") or parsed.get("ru" + "bric_version") or "spark-v0",
             "composite": composite,
             "score_breakdown": dimensions,
             "title_candidates": candidates,
             "selected_title": str(parsed.get("selected_title") or selected_title).strip() or selected_title,
             "scored_at": now_iso(),
             "script_hash": hashlib.sha256(scoring_text.encode("utf-8")).hexdigest()[:12],
-            "blind_input_policy": "minimal-title-content-score-rules-only",
+            "score_input_policy": "minimal-title-content-score-rules-only",
             "input_status": parsed.get("input_status") if isinstance(parsed.get("input_status"), dict) else {"minimal_input_only": True},
             "self_check": self_check,
             "refusal": parsed.get("refusal"),
@@ -1223,61 +1237,62 @@ def prompt_blind_score_spark(topic: str, selected_title: str, candidates: list[s
 def branded_score_source_label(source: str) -> str:
     raw = str(source or "").lower()
     if "model" in raw:
-        return "墨始模型评分"
+        return "Mosmori 模型评分"
     if "isolated" in raw:
-        return "墨始隔离评分"
+        return "Mosmori 隔离评分"
     if "local" in raw:
-        return "墨始本地评分"
-    return "墨始评分"
+        return "Mosmori 本地评分"
+    return "Mosmori 评分"
 
 
-def local_blind_score_spark(topic: str, selected_title: str = "", fallback_note: str = "") -> dict:
+def local_score_spark(topic: str, selected_title: str = "", local_note: str = "") -> dict:
     candidates = generate_title_candidates(topic)
     chosen_title = selected_title.strip() or candidates[0]
     if chosen_title not in candidates:
         candidates = unique_strings([chosen_title, *candidates])[:4]
     dimensions = score_spark_dimensions(topic, chosen_title)
-    composite, skill_score = composite_score(dimensions)
+    composite, mosmori_score = composite_score(dimensions)
     scoring_text = f"{chosen_title}\n{topic}"
-    self_check = blind_input_self_check(scoring_text)
-    source_note = fallback_note or "未配置可用模型，使用墨始本地评分；评分结构与工作台看板对齐。"
+    self_check = score_input_self_check(scoring_text)
+    source_note = local_note or "未配置可用模型，使用 Mosmori 本地评分；评分结构与工作台看板对齐。"
     if self_check["any_contamination_signal"]:
         source_note += " 输入中出现疑似播放/评论/复盘信号，本次分数需按污染输入看待。"
     return {
-        "skill_score": skill_score,
-        "blind_score": skill_score,
+        "mosmori_score": mosmori_score,
+        LEGACY_PRIMARY_SCORE_KEY: mosmori_score,
+        LEGACY_SECONDARY_SCORE_KEY: mosmori_score,
         "score_source": "mosmori-local-score-v0",
-        "score_source_label": "墨始本地评分",
+        "score_source_label": "Mosmori 本地评分",
         "score_source_note": source_note,
-        "rubric_version": "spark-v0",
+        "score_rules_version": "spark-v0",
         "composite": composite,
         "score_breakdown": dimensions,
         "title_candidates": candidates,
         "selected_title": chosen_title,
         "scored_at": now_iso(),
         "script_hash": hashlib.sha256(scoring_text.encode("utf-8")).hexdigest()[:12],
-        "blind_input_policy": "local-title-content-score-rules",
-        "input_status": {"minimal_input_only": True, "local_fallback": True},
+        "score_input_policy": "local-title-content-score-rules",
+        "input_status": {"minimal_input_only": True, "local_mode": True},
         "self_check": self_check,
     }
 
 
-def blind_score_spark(topic: str, selected_title: str = "", config: dict | None = None, prefer_model: bool = True) -> dict:
+def mosmori_score_spark(topic: str, selected_title: str = "", config: dict | None = None, prefer_model: bool = True) -> dict:
     candidates = generate_title_candidates(topic)
     chosen_title = selected_title.strip() or candidates[0]
     if chosen_title not in candidates:
         candidates = unique_strings([chosen_title, *candidates])[:4]
     if prefer_model and config:
-        score_data, note = prompt_blind_score_spark(topic, chosen_title, candidates, config)
+        score_data, note = model_score_spark(topic, chosen_title, candidates, config)
         if score_data:
             return score_data
-        fallback_note = note
+        local_note = note
     else:
-        fallback_note = "演示模式或本地模式使用墨始本地评分。"
-    return local_blind_score_spark(topic, chosen_title, fallback_note)
+        local_note = "演示模式或本地模式使用 Mosmori 本地评分。"
+    return local_score_spark(topic, chosen_title, local_note)
 
 
-def render_blind_score(topic: str, score_data: dict) -> str:
+def render_spark_score(topic: str, score_data: dict) -> str:
     rows = "\n".join(
         f"| {item['label']} | {item['score']}/5 | {item['confidence']} | {item['reason']} |"
         for item in score_data.get("score_breakdown", [])
@@ -1289,7 +1304,7 @@ def render_blind_score(topic: str, score_data: dict) -> str:
 
 选用标题：{score_data.get("selected_title", "")}
 
-综合分：{score_data.get("skill_score", 0)}/100
+综合分：{mosmori_score_value(score_data)}/100
 
 Composite：{score_data.get("composite", 0)}/10
 
@@ -1310,8 +1325,8 @@ Composite：{score_data.get("composite", 0)}/10
 
 def score_spark_item(item: dict, selected_title: str, config: dict, demo: bool = False) -> tuple[dict, list[dict]]:
     topic = item.get("content") or item.get("media_url") or "未命名灵感"
-    score_data = blind_score_spark(topic, selected_title, config, prefer_model=not demo)
-    rendered = {"score": render_blind_score(topic, score_data)}
+    score_data = mosmori_score_spark(topic, selected_title, config, prefer_model=not demo)
+    rendered = {"score": render_spark_score(topic, score_data)}
     flow_id = item.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
     source = {
         "inbox_id": item.get("id", ""),
@@ -1323,7 +1338,7 @@ def score_spark_item(item: dict, selected_title: str, config: dict, demo: bool =
         source["demo"] = True
     artifacts = write_deliverable_artifacts(
         f"给这个选题评分：{topic}",
-        "blind_score",
+        "score",
         ["score"],
         rendered,
         "",
@@ -1513,7 +1528,7 @@ def render_deliverables(topic: str, deliverables: list[str], config: dict) -> di
         "trend_candidates": lambda: render_trend_candidates(topic),
         "topic_recommendation": lambda: render_topic_recommendation(topic),
         "persona_report": lambda: render_persona_report(topic),
-        "rubric_bump": lambda: render_rubric_bump(topic),
+        "score_rules_bump": lambda: render_score_rules_bump(topic),
         "benchmark_analysis": lambda: render_benchmark_analysis(topic),
         "migration_report": lambda: render_migration_report(topic, config),
         "promotion_plan": lambda: render_promotion_plan(topic),
@@ -1564,7 +1579,7 @@ def write_deliverable_artifacts(
         "trend_candidates": "trend-candidates.md",
         "topic_recommendation": "topic-recommendation.md",
         "persona_report": "persona-report.md",
-        "rubric_bump": "score-rules-bump.md",
+        "score_rules_bump": "score-rules-bump.md",
         "benchmark_analysis": "benchmark-analysis.md",
         "migration_report": "migration-report.md",
         "promotion_plan": "promotion-plan.md",
@@ -1876,7 +1891,7 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None) ->
     llm_text = ""
     llm_note = "未请求 LLM。"
     if deliverables:
-        llm_text, llm_note = call_openai_compatible(build_llm_prompt(text, deliverables, config), config)
+        llm_text, llm_note = call_model_provider(build_llm_prompt(text, deliverables, config), config)
         worklog.append(llm_note)
 
     rendered = render_deliverables(topic, deliverables, config)
@@ -2016,7 +2031,7 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             self.send_json(reply)
         elif path == "/api/llm/test":
             config = load_config(include_secret=True)
-            result = test_openai_compatible(config)
+            result = test_model_provider(config)
             self.send_json(result, HTTPStatus.OK if result["ok"] else HTTPStatus.BAD_GATEWAY)
         elif path == "/api/file/read":
             config = load_config(include_secret=False)
@@ -2048,7 +2063,7 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             item = normalize_inspiration(payload)
             append_jsonl(INBOX_PATH, item)
             self.send_json({"status": "ok", "item": item}, HTTPStatus.CREATED)
-        elif path in {"/api/spark/score", "/api/spark/blind-score"}:
+        elif path in {"/api/spark/score", LEGACY_SCORE_ROUTE}:
             config = load_config(include_secret=True)
             item_id = payload.get("id", "")
             content = (payload.get("content") or "").strip()

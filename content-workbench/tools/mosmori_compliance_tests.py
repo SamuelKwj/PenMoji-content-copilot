@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import importlib.util
 import json
@@ -15,7 +15,7 @@ MAIN_PATH = APP_ROOT / "main.py"
 
 
 def load_workbench():
-    temp_root = Path(tempfile.mkdtemp(prefix="biemuoji-skill-compliance-"))
+    temp_root = Path(tempfile.mkdtemp(prefix="mosmori-capability-compliance-"))
     os.environ["CONTENT_WORKBENCH_HOME"] = str(temp_root)
     spec = importlib.util.spec_from_file_location("content_workbench_main", MAIN_PATH)
     if spec is None or spec.loader is None:
@@ -56,7 +56,7 @@ def run() -> dict:
             ("推荐选题", "topic_recommendation", "topic-recommendation.md"),
             ("学这个账号：个人IP对标账号", "benchmark_analysis", "benchmark-analysis.md"),
             ("更新受众画像：根据最近评论", "persona_report", "persona-report.md"),
-            ("升级评分规则：检查权重", "rubric_bump", "score-rules-bump.md"),
+            ("升级评分规则：检查权重", "score_rules_bump", "score-rules-bump.md"),
             ("我想做一条普通人做内容前如何判断入口", "seed_draft", "seed-draft.md"),
             ("抖音审稿：保证你一定月入十万，加我微信", "douyin_review", "douyin-review.md"),
             ("优化开头：普通人做个人IP为什么半途而废", "hook_review", "hook-review.md"),
@@ -88,12 +88,12 @@ def run() -> dict:
         results.append(expect("综上所述" not in rewrite_section, "humanizer:remove-summary-phrase", rewrite_section))
         results.append(expect("赋能" not in rewrite_section, "humanizer:remove-ai-ism", rewrite_section))
 
-        contaminated = wb.blind_score_spark("这条脚本已经播放量10万，评论很多：普通人为什么半途而废", config=config, prefer_model=False)
+        contaminated = wb.mosmori_score_spark("这条脚本已经播放量10万，评论很多：普通人为什么半途而废", config=config, prefer_model=False)
         self_check = contaminated.get("self_check", {})
         results.append(
             expect(
                 bool(self_check.get("any_contamination_signal")),
-                "blind-score:contamination-detected",
+                "score:contamination-detected",
                 json.dumps(self_check, ensure_ascii=False),
             )
         )
@@ -114,7 +114,7 @@ def run() -> dict:
         after_run = wb.find_latest_workflow_run(flow_id=prediction_run.get("flow_id"))
         results.append(expect(after_run.get("prediction_hash") == before_hash, "retro:does-not-mutate-prediction", str(after_run)))
 
-        audit_path = APP_ROOT / "docs" / "skill-coverage-audit.md"
+        audit_path = APP_ROOT / "docs" / "capability-coverage-audit.md"
         audit_text = audit_path.read_text(encoding="utf-8")
         covered = [
             line for line in audit_text.splitlines()

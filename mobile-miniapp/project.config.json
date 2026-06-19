@@ -1,5 +1,5 @@
 {
-  "description": "Content Workbench mobile inspiration capture MVP",
+  "description": "Mosmori mobile inspiration capture",
   "packOptions": {
     "ignore": [],
     "include": []
@@ -31,7 +31,7 @@
   },
   "compileType": "miniprogram",
   "appid": "wx295d23f4d5eb3226",
-  "projectname": "content-workbench-mobile-mvp",
+  "projectname": "mosmori-mobile-capture",
   "condition": {},
   "simulatorPluginLibVersion": {},
   "editorSetting": {}

@@ -1,13 +1,14 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>别墨叽</title>
-  <link rel="icon" href="/static/assets/biemuoji-logo.png">
+  <title>Mosmori</title>
+  <link rel="icon" href="/static/assets/mosmori-logo.png">
   <style>
     :root {
       color-scheme: light;
+      --body-top: #fffdfb;
       --bg: #f6f4f1;
       --panel: #ffffff;
       --panel-soft: #fff8f4;
@@ -24,13 +25,32 @@
       --shadow: 0 14px 34px rgba(91, 61, 42, .10);
     }
 
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --body-top: #11151b;
+      --bg: #151922;
+      --panel: #1e2430;
+      --panel-soft: #242b38;
+      --text: #f3eee8;
+      --muted: #a79d94;
+      --line: #343b49;
+      --accent: #e06a3f;
+      --accent-dark: #f07a4e;
+      --accent-soft: rgba(224, 106, 63, .14);
+      --blue: #7ab7d7;
+      --amber: #e1a74c;
+      --good: #7fd2a8;
+      --bad: #ff7b72;
+      --shadow: 0 20px 52px rgba(0, 0, 0, .36);
+    }
+
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
       min-width: 320px;
       font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
-      background: linear-gradient(180deg, #fffdfb 0, var(--bg) 300px);
+      background: linear-gradient(180deg, var(--body-top) 0, var(--bg) 300px);
       color: var(--text);
       letter-spacing: 0;
     }
@@ -39,6 +59,8 @@
     h1 { font-size: 20px; font-weight: 760; }
     h2 { font-size: 15px; font-weight: 720; }
     h3 { font-size: 13px; font-weight: 700; color: #4a3730; }
+
+    html[data-theme="dark"] h3 { color: #f3eee8; }
 
     button, input, textarea { font: inherit; letter-spacing: 0; }
 
@@ -94,6 +116,12 @@
       border-color: #26302a;
     }
 
+    html[data-theme="dark"] button.demo-mode {
+      background: #2b6f8f;
+      border-color: #2b6f8f;
+      box-shadow: 0 10px 24px rgba(43, 111, 143, .22);
+    }
+
     input, textarea {
       width: 100%;
       border: 1px solid var(--line);
@@ -130,6 +158,72 @@
     .tiny { color: var(--muted); font-size: 11px; }
     .good { color: var(--good); }
     .warn { color: var(--amber); }
+
+    html[data-theme="dark"] button.secondary,
+    html[data-theme="dark"] input,
+    html[data-theme="dark"] textarea,
+    html[data-theme="dark"] .pill,
+    html[data-theme="dark"] .collapse-rail,
+    html[data-theme="dark"] .material-card,
+    html[data-theme="dark"] .output-card,
+    html[data-theme="dark"] .spark-card,
+    html[data-theme="dark"] .message,
+    html[data-theme="dark"] .quick-chip,
+    html[data-theme="dark"] .selected-material,
+    html[data-theme="dark"] .modal {
+      background: #202633;
+      color: var(--text);
+      border-color: var(--line);
+    }
+
+    html[data-theme="dark"] button.secondary:hover,
+    html[data-theme="dark"] .material-card:hover,
+    html[data-theme="dark"] .output-card:hover,
+    html[data-theme="dark"] .spark-card:hover,
+    html[data-theme="dark"] .quick-chip:hover {
+      background: #283141;
+      border-color: #465164;
+    }
+
+    html[data-theme="dark"] .topbar {
+      background: rgba(17, 21, 27, .94);
+      border-bottom-color: var(--line);
+      backdrop-filter: blur(14px);
+    }
+
+    html[data-theme="dark"] .panel,
+    html[data-theme="dark"] .settings-modal {
+      background: var(--panel);
+      border-color: var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    html[data-theme="dark"] .panel-head,
+    html[data-theme="dark"] .chat-input,
+    html[data-theme="dark"] .settings-body,
+    html[data-theme="dark"] .settings-section,
+    html[data-theme="dark"] .output-file,
+    html[data-theme="dark"] .spark-details {
+      background: #1a202b;
+      border-color: var(--line);
+      color: var(--text);
+    }
+
+    html[data-theme="dark"] .message.user {
+      background: linear-gradient(180deg, rgba(224, 106, 63, .18), rgba(224, 106, 63, .12));
+      border-color: rgba(224, 106, 63, .34);
+    }
+
+    html[data-theme="dark"] .message.agent {
+      background: #202633;
+      border-color: var(--line);
+    }
+
+    html[data-theme="dark"] .rank-badge,
+    html[data-theme="dark"] .score-pill {
+      background: #2b6f8f;
+      color: #f8fbff;
+    }
 
     .app {
       display: grid;
@@ -892,11 +986,11 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark" aria-label="别墨叽 Logo">
-          <img src="/static/assets/biemuoji-logo.png" alt="">
+        <div class="brand-mark" aria-label="Mosmori Logo">
+          <img src="/static/assets/mosmori-logo.png" alt="">
         </div>
         <div class="brand-copy">
-          <h1>别墨叽</h1>
+          <h1>Mosmori</h1>
           <p class="muted">把灵感沉成文字，把素材推进成产出。</p>
         </div>
       </div>
@@ -906,6 +1000,7 @@
         <button class="demo-mode" id="runDemoFlow" type="button">演示模式</button>
         <button class="secondary" id="resetDemoFlow" type="button">清理演示</button>
         <button class="secondary" id="refreshAll">刷新</button>
+        <button class="secondary icon" id="toggleTheme" title="切换暗夜主题" aria-label="切换暗夜主题">◐</button>
         <button class="secondary icon" id="openSettings" title="设置" aria-label="设置">⚙</button>
       </div>
     </header>
@@ -917,7 +1012,7 @@
           <div class="panel-head">
             <div>
               <h2>火花看板</h2>
-              <p class="muted">未评分时只显示初筛线索；正式分数来自墨始评分引擎。</p>
+              <p class="muted">未评分时只显示初筛线索；正式分数来自 Mosmori 评分引擎。</p>
             </div>
             <div class="panel-actions">
               <span class="pill" id="sparkCount">0 条</span>
@@ -1278,15 +1373,15 @@
 
     function scoreSourceLabel(source) {
       const raw = String(source || "").toLowerCase();
-      if (raw.includes("model")) return "墨始模型评分";
-      if (raw.includes("isolated")) return "墨始隔离评分";
-      if (raw.includes("local")) return "墨始本地评分";
+      if (raw.includes("model")) return "Mosmori 模型评分";
+      if (raw.includes("isolated")) return "Mosmori 隔离评分";
+      if (raw.includes("local")) return "Mosmori 本地评分";
       if (raw) return source;
       return "评分来源待写入";
     }
 
     function scoreValueOf(item) {
-      return item.score ?? item[["sk", "ill_score"].join("")] ?? item[["blind", "score"].join("_")];
+      return item.mosmori_score ?? item.score ?? item[["sk", "ill_score"].join("")] ?? item[["bl", "ind_score"].join("")];
     }
 
     function scoreBreakdownOf(item) {
@@ -1299,7 +1394,7 @@
       if (Number.isFinite(Number(value))) {
         return { value: Math.round(Number(value)), source: item.score_source_label || item.score_source || "mosmori score" };
       }
-      if (source.includes("blind") && Number.isFinite(Number(item.score))) {
+      if (source.includes(["bl", "ind"].join("")) && Number.isFinite(Number(item.score))) {
         return { value: Math.round(Number(item.score)), source: item.score_source_label || item.score_source };
       }
       return null;
@@ -1307,7 +1402,7 @@
 
     function sparkScoreFactors(item) {
       const raw = scoreBreakdownOf(item);
-      if (!Array.isArray(raw) || !raw.length) return [{ label: "墨始评分", value: "已完成" }];
+      if (!Array.isArray(raw) || !raw.length) return [{ label: "Mosmori 评分", value: "已完成" }];
       return raw.slice(0, 4).map((factor) => ({
         label: factor.label || factor.dimension || "维度",
         value: factor.value ?? (factor.score !== undefined ? `${factor.score}/${factor.max || 5}` : factor.delta ?? ""),
@@ -1406,7 +1501,7 @@
         `;
         node.querySelector("[data-score-spark]").addEventListener("click", async (event) => {
           event.stopPropagation();
-          await blindScoreSpark(item, item.selected_title || "");
+          await mosmoriScoreSpark(item, item.selected_title || "");
         });
         node.querySelector("[data-toggle-details]").addEventListener("click", (event) => {
           event.stopPropagation();
@@ -1421,7 +1516,7 @@
           button.addEventListener("click", async (event) => {
             event.stopPropagation();
             const title = item.title_candidates[Number(button.dataset.titleIndex)];
-            await blindScoreSpark(item, title);
+            await mosmoriScoreSpark(item, title);
           });
         });
         node.addEventListener("click", () => {
@@ -1458,7 +1553,7 @@
       `;
     }
 
-    async function blindScoreSpark(item, selectedTitle = "") {
+    async function mosmoriScoreSpark(item, selectedTitle = "") {
       const key = sparkKey(item);
       if (scoringSparkIds.has(key)) return;
       scoringSparkIds.add(key);
@@ -2049,6 +2144,20 @@
       $("settingsBackdrop").hidden = true;
     }
 
+    function applyTheme(theme, options = {}) {
+      const nextTheme = theme === "dark" ? "dark" : "light";
+      document.documentElement.dataset.theme = nextTheme;
+      $("toggleTheme").textContent = nextTheme === "dark" ? "☼" : "◐";
+      $("toggleTheme").title = nextTheme === "dark" ? "切换明亮主题" : "切换暗夜主题";
+      $("toggleTheme").setAttribute("aria-label", $("toggleTheme").title);
+      localStorage.setItem("mosmori:theme", nextTheme);
+      if (!options.quiet) showToast(nextTheme === "dark" ? "暗夜主题已启用" : "明亮主题已启用");
+    }
+
+    function toggleTheme() {
+      applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+    }
+
     function setRailCollapsed(kind, collapsed, options = {}) {
       const isSpark = kind === "spark";
       const column = $(isSpark ? "sparkColumn" : "materialColumn");
@@ -2058,7 +2167,7 @@
       $("workspace").classList.toggle(workspaceClass, collapsed);
       toggle.textContent = collapsed ? "展开" : "收起";
       toggle.setAttribute("aria-expanded", String(!collapsed));
-      localStorage.setItem(`biemuoji:${kind}Collapsed`, String(collapsed));
+      localStorage.setItem(`mosmori:${kind}Collapsed`, String(collapsed));
       if (!options.quiet) showToast(`${isSpark ? "火花栏" : "素材栏"}已${collapsed ? "收起" : "展开"}`);
     }
 
@@ -2069,15 +2178,16 @@
       panel.classList.toggle("section-collapsed", collapsed);
       toggle.textContent = collapsed ? "展开" : "折叠";
       toggle.setAttribute("aria-expanded", String(!collapsed));
-      localStorage.setItem(`biemuoji:${section}SectionCollapsed`, String(collapsed));
+      localStorage.setItem(`mosmori:${section}SectionCollapsed`, String(collapsed));
       if (!options.quiet) showToast(`${isMaterial ? "素材选择" : "产出看板"}已${collapsed ? "折叠" : "展开"}`);
     }
 
     function restoreCollapsedState() {
-      setRailCollapsed("spark", localStorage.getItem("biemuoji:sparkCollapsed") === "true", { quiet: true });
-      setRailCollapsed("material", localStorage.getItem("biemuoji:materialCollapsed") === "true", { quiet: true });
-      setSectionCollapsed("material", localStorage.getItem("biemuoji:materialSectionCollapsed") === "true", { quiet: true });
-      setSectionCollapsed("output", localStorage.getItem("biemuoji:outputSectionCollapsed") === "true", { quiet: true });
+      applyTheme(localStorage.getItem("mosmori:theme") || "light", { quiet: true });
+      setRailCollapsed("spark", localStorage.getItem("mosmori:sparkCollapsed") === "true", { quiet: true });
+      setRailCollapsed("material", localStorage.getItem("mosmori:materialCollapsed") === "true", { quiet: true });
+      setSectionCollapsed("material", localStorage.getItem("mosmori:materialSectionCollapsed") === "true", { quiet: true });
+      setSectionCollapsed("output", localStorage.getItem("mosmori:outputSectionCollapsed") === "true", { quiet: true });
     }
 
     function typeLabel(type) {
@@ -2129,6 +2239,7 @@
     });
     $("runDemoFlow").addEventListener("click", runDemoFlow);
     $("resetDemoFlow").addEventListener("click", resetDemoFlow);
+    $("toggleTheme").addEventListener("click", toggleTheme);
 
     $("sendChat").addEventListener("click", () => sendChat());
     $("chatInput").addEventListener("focus", () => {

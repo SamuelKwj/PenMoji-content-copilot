@@ -1,4 +1,4 @@
-# Mobile and Cloud Sync Contract
+﻿# Mobile and Cloud Sync Contract
 
 ## Purpose
 
