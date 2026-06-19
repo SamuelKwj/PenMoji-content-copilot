@@ -1273,7 +1273,9 @@
     function scoreSourceLabel(source) {
       const raw = String(source || "").toLowerCase();
       if (raw.includes("compatible") || raw.includes("local-v0")) return "本地兼容评分";
-      if (raw.includes("blind")) return "真实 blind-score";
+      if (raw.includes("sub-agent") || raw.includes("subagent")) return "隔离 blind-score";
+      if (raw.includes("prompt") || raw.includes("openai-compatible")) return "模型 blind-score";
+      if (raw.includes("blind")) return "blind-score";
       if (raw) return source;
       return "评分来源待写入";
     }

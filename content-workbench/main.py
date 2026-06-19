@@ -374,6 +374,14 @@ def build_llm_prompt(message: str, deliverables: list[str], config: dict) -> str
 
 
 def call_openai_compatible(prompt: str, config: dict) -> tuple[str, str]:
+    messages = [
+        {"role": "system", "content": "你是新手创作者的脚本工作流助手，返回可直接落盘的中文内容。"},
+        {"role": "user", "content": prompt},
+    ]
+    return call_openai_chat(messages, config, temperature=0.7, timeout=60)
+
+
+def call_openai_chat(messages: list[dict], config: dict, temperature: float = 0.7, timeout: int = 60) -> tuple[str, str]:
     api_key = config.get("api_key", "")
     if not api_key:
         return "", "未配置 API Key，使用本地 deterministic fallback。"
@@ -384,11 +392,8 @@ def call_openai_compatible(prompt: str, config: dict) -> tuple[str, str]:
 
     payload = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": "你是新手创作者的脚本工作流助手，返回可直接落盘的中文内容。"},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.7,
+        "messages": messages,
+        "temperature": temperature,
     }
     request = urllib.request.Request(
         f"{base_url}/chat/completions",
@@ -397,7 +402,7 @@ def call_openai_compatible(prompt: str, config: dict) -> tuple[str, str]:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
         content = data["choices"][0]["message"]["content"]
         return content.strip(), "LLM 调用成功。"
@@ -649,7 +654,132 @@ def composite_score(dimensions: list[dict]) -> tuple[float, int]:
     return composite, round(composite * 10)
 
 
-def blind_score_spark(topic: str, selected_title: str = "") -> dict:
+def blind_score_system_prompt() -> str:
+    rubric_lines = "\n".join(f"- {item['key']} {item['label']}: 0-5 整数分" for item in SPARK_RUBRIC)
+    return (
+        "你是一个隔离的内容盲评评分器。你只能根据本次消息里的标题候选、火花/大纲/正文、rubric 维度打分。"
+        "不要参考任何用户历史、播放量、点赞、评论、复盘、预测、账号状态或外部事实。"
+        "如果文本里出现发布后数据或复盘信息，必须在 self_check 标记 contamination。"
+        "输出必须是严格 JSON，根节点必须是对象，不要 markdown，不要解释。\n\n"
+        "Rubric 维度：\n"
+        f"{rubric_lines}\n\n"
+        "JSON schema:\n"
+        "{\n"
+        '  "rubric_version": "spark-v0",\n'
+        '  "selected_title": "string",\n'
+        '  "dimensions": {\n'
+        '    "HP": {"score": 0, "confidence": "high|medium|low", "reason": "30字内，引用文本证据"},\n'
+        '    "ER": {"score": 0, "confidence": "high|medium|low", "reason": "30字内，引用文本证据"},\n'
+        '    "SR": {"score": 0, "confidence": "high|medium|low", "reason": "30字内，引用文本证据"},\n'
+        '    "QL": {"score": 0, "confidence": "high|medium|low", "reason": "30字内，引用文本证据"},\n'
+        '    "NA": {"score": 0, "confidence": "high|medium|low", "reason": "30字内，引用文本证据"},\n'
+        '    "AB": {"score": 0, "confidence": "high|medium|low", "reason": "30字内，引用文本证据"},\n'
+        '    "SAT": {"score": 0, "confidence": "high|medium|low", "reason": "30字内，引用文本证据"}\n'
+        "  },\n"
+        '  "input_status": {"minimal_input_only": true},\n'
+        '  "self_check": {"saw_play_numbers": false, "saw_comments": false, "saw_retro_segment": false, "any_contamination_signal": false},\n'
+        '  "refusal": null\n'
+        "}"
+    )
+
+
+def blind_score_user_prompt(topic: str, selected_title: str, candidates: list[str]) -> str:
+    candidate_lines = "\n".join(f"- {candidate}" for candidate in candidates)
+    return (
+        "下面是唯一允许评分的输入。它可能是火花、选题大纲或口播草稿，请当作发布前草稿打分。\n\n"
+        f"选用标题：{selected_title}\n\n"
+        f"标题候选：\n{candidate_lines}\n\n"
+        f"火花/大纲/正文：\n{topic}\n"
+    )
+
+
+def extract_json_object(text: str) -> dict:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```(?:json)?", "", stripped, flags=re.IGNORECASE).strip()
+        stripped = re.sub(r"```$", "", stripped).strip()
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("model did not return a JSON object")
+    return json.loads(stripped[start : end + 1])
+
+
+def normalize_blind_dimensions(raw_dimensions: object) -> list[dict]:
+    if isinstance(raw_dimensions, dict):
+        source_items = [
+            {"dimension": key, **(value if isinstance(value, dict) else {})}
+            for key, value in raw_dimensions.items()
+        ]
+    elif isinstance(raw_dimensions, list):
+        source_items = [value for value in raw_dimensions if isinstance(value, dict)]
+    else:
+        raise ValueError("dimensions must be an object or array")
+
+    by_key = {str(item.get("dimension", "")).upper(): item for item in source_items}
+    normalized: list[dict] = []
+    for rubric in SPARK_RUBRIC:
+        key = rubric["key"]
+        item = by_key.get(key)
+        if not item:
+            raise ValueError(f"missing dimension {key}")
+        score = int(round(float(item.get("score", 0))))
+        confidence = str(item.get("confidence", "medium")).lower()
+        if confidence not in {"high", "medium", "low"}:
+            confidence = "medium"
+        reason = re.sub(r"\s+", " ", str(item.get("reason", ""))).strip()
+        if not reason:
+            reason = "模型未给出具体理由"
+        normalized.append(dim_result(key, rubric["label"], score, confidence, reason[:60]))
+    return normalized
+
+
+def prompt_blind_score_spark(topic: str, selected_title: str, candidates: list[str], config: dict) -> tuple[dict | None, str]:
+    messages = [
+        {"role": "system", "content": blind_score_system_prompt()},
+        {"role": "user", "content": blind_score_user_prompt(topic, selected_title, candidates)},
+    ]
+    content, note = call_openai_chat(messages, config, temperature=0.1, timeout=45)
+    if not content:
+        return None, note
+    try:
+        parsed = extract_json_object(content)
+        dimensions = normalize_blind_dimensions(parsed.get("dimensions"))
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        return None, f"模型盲评 JSON 解析失败，使用本地 fallback：{exc}"
+
+    composite, skill_score = composite_score(dimensions)
+    scoring_text = f"{selected_title}\n{topic}"
+    self_check = parsed.get("self_check") if isinstance(parsed.get("self_check"), dict) else {}
+    source_note = (
+        "模型盲评：仅提交标题候选、火花/大纲/正文和 rubric 维度；"
+        "不提交历史预测、复盘、播放数据或用户状态。"
+    )
+    if self_check.get("any_contamination_signal"):
+        source_note += " 模型提示输入中可能含污染信号，已保留自检结果。"
+    return (
+        {
+            "skill_score": skill_score,
+            "blind_score": skill_score,
+            "score_source": "cheat-score-blind-prompt/openai-compatible-v0",
+            "score_source_note": source_note,
+            "rubric_version": parsed.get("rubric_version") or "spark-v0",
+            "composite": composite,
+            "score_breakdown": dimensions,
+            "title_candidates": candidates,
+            "selected_title": str(parsed.get("selected_title") or selected_title).strip() or selected_title,
+            "scored_at": now_iso(),
+            "script_hash": hashlib.sha256(scoring_text.encode("utf-8")).hexdigest()[:12],
+            "blind_input_policy": "minimal-title-content-rubric-only",
+            "input_status": parsed.get("input_status") if isinstance(parsed.get("input_status"), dict) else {"minimal_input_only": True},
+            "self_check": self_check,
+            "refusal": parsed.get("refusal"),
+        },
+        note,
+    )
+
+
+def local_blind_score_spark(topic: str, selected_title: str = "", fallback_note: str = "") -> dict:
     candidates = generate_title_candidates(topic)
     chosen_title = selected_title.strip() or candidates[0]
     if chosen_title not in candidates:
@@ -661,7 +791,7 @@ def blind_score_spark(topic: str, selected_title: str = "") -> dict:
         "skill_score": skill_score,
         "blind_score": skill_score,
         "score_source": "cheat-score-blind-compatible/local-v0",
-        "score_source_note": "桌面后端按 blind-score JSON 字段写入；真实 sub-agent 接入后可替换 provider。",
+        "score_source_note": fallback_note or "未配置可用模型，使用本地兼容评分；字段结构与 blind-score 对齐。",
         "rubric_version": "spark-v0",
         "composite": composite,
         "score_breakdown": dimensions,
@@ -669,7 +799,25 @@ def blind_score_spark(topic: str, selected_title: str = "") -> dict:
         "selected_title": chosen_title,
         "scored_at": now_iso(),
         "script_hash": hashlib.sha256(scoring_text.encode("utf-8")).hexdigest()[:12],
+        "blind_input_policy": "local-compatible-title-content-rubric",
+        "input_status": {"minimal_input_only": True, "local_fallback": True},
+        "self_check": {"any_contamination_signal": False},
     }
+
+
+def blind_score_spark(topic: str, selected_title: str = "", config: dict | None = None, prefer_model: bool = True) -> dict:
+    candidates = generate_title_candidates(topic)
+    chosen_title = selected_title.strip() or candidates[0]
+    if chosen_title not in candidates:
+        candidates = unique_strings([chosen_title, *candidates])[:4]
+    if prefer_model and config:
+        score_data, note = prompt_blind_score_spark(topic, chosen_title, candidates, config)
+        if score_data:
+            return score_data
+        fallback_note = note
+    else:
+        fallback_note = "演示模式或本地模式使用 deterministic fallback。"
+    return local_blind_score_spark(topic, chosen_title, fallback_note)
 
 
 def render_blind_score(topic: str, score_data: dict) -> str:
@@ -705,7 +853,7 @@ Composite：{score_data.get("composite", 0)}/10
 
 def score_spark_item(item: dict, selected_title: str, config: dict, demo: bool = False) -> tuple[dict, list[dict]]:
     topic = item.get("content") or item.get("media_url") or "未命名灵感"
-    score_data = blind_score_spark(topic, selected_title)
+    score_data = blind_score_spark(topic, selected_title, config, prefer_model=not demo)
     rendered = {"score": render_blind_score(topic, score_data)}
     flow_id = item.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
     source = {

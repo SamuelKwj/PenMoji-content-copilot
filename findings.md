@@ -52,6 +52,7 @@
 | Use flow metadata for demo and spark output grouping | Runtime history is preserved, while the output board can show only the active demo run or selected spark chain. |
 | Add a local workflow run ledger before cloud/platform integrations | Prediction, publish registration, and retro can be credible in the MVP without waiting for deployed cloud metrics imports. |
 | Treat prediction artifacts as immutable once generated | Publish and retro records reference prediction hashes/paths instead of rewriting prediction content. |
+| Use prompt-limited model blind scoring before full sub-agent integration | The product can send only title/body/rubric to an OpenAI-compatible model now, while future Codex Task sub-agent isolation remains the stricter version. |
 
 ## Issues Encountered
 | Issue | Resolution |
@@ -73,6 +74,7 @@
 | Demo data needs to be disposable for repeated presentations | Demo items and artifacts now carry metadata and can be removed with `清理演示`. |
 | Old runtime artifacts can pollute a pitch demo | Added demo-view and selected-spark filtering so right-side outputs can stay focused without deleting user history. |
 | The workflow previously stopped at generated copy/scripts | Added local publish registration and retro artifacts so a content idea can be followed through after publishing. |
+| Local spark scoring did not use a model even when configured | Added a prompt blind-score runner with strict JSON parsing and local fallback. |
 
 ## Resources
 - Existing pipeline root: `C:\Users\samue\Documents\内容生产agent\Content Creator Pipeline`
@@ -95,3 +97,4 @@
 - Formal demo check confirmed top-bar `演示模式` and `清理演示` can generate and remove demo sparks/artifacts while preserving normal service status.
 - Demo-readiness hardening stores manifest summaries in `/api/files`, uses `flow_id`/`flow_topic`/`inbox_id` to group outputs, and labels local-compatible scores as `本地兼容评分`.
 - Publish-retro loop check confirmed a single chain can generate `发布预测`, `发布登记`, and `复盘结果` artifacts under one `flow_id`, while the prediction remains hash-locked in `workflow_runs.jsonl`.
+- Prompt blind-score runner check confirmed no-key fallback stays local, while an OpenAI-compatible scorer writes `cheat-score-blind-prompt/openai-compatible-v0` with clean rubric dimensions and minimal-input policy metadata.

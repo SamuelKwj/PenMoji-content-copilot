@@ -357,3 +357,20 @@
   - Isolated API validation on port `7891` generated `prediction.md`, then `publish-record.md`, then `retro.md` under the same `flow_id`.
   - Workflow run validation confirmed the run status advanced to `retrospected` while `immutable_prediction` stayed true.
   - `mobile-miniapp/project.config.json` and `mobile-miniapp/project.private.config.json` were not modified by this phase.
+
+### Phase 18: Prompt Blind-Score Runner
+- **Status:** complete
+- Actions taken:
+  - Created rollback tag `before-prompt-blind-score-runner`.
+  - Split the OpenAI-compatible call path so blind scoring can use its own system prompt instead of the general workflow prompt.
+  - Added a prompt blind-score runner that sends only selected title, title candidates, spark/body text, and rubric dimensions.
+  - Added strict JSON extraction and dimension validation before accepting model scores.
+  - Kept `cheat-score-blind-compatible/local-v0` as fallback when no API key exists or the model returns invalid JSON.
+  - Kept demo scoring deterministic by using local fallback in demo mode.
+  - Updated score source labels so local fallback, prompt model scoring, and future sub-agent scoring are distinguishable.
+- Verification:
+  - `python -m py_compile content-workbench\main.py content-workbench\cloud_mock.py` passed.
+  - `git diff --check -- content-workbench\main.py content-workbench\static\index.html task_plan.md progress.md findings.md` passed with only existing CRLF warnings.
+  - Isolated no-key validation on port `7894` confirmed scoring falls back to `cheat-score-blind-compatible/local-v0`.
+  - Isolated OpenAI-compatible mock validation confirmed scoring writes `cheat-score-blind-prompt/openai-compatible-v0`, seven rubric dimensions, `blind_input_policy=minimal-title-content-rubric-only`, and `score.md`.
+  - `mobile-miniapp/project.config.json` and `mobile-miniapp/project.private.config.json` were not modified by this phase.

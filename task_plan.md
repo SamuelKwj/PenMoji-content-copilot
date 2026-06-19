@@ -4,7 +4,7 @@
 Turn the existing Content Creator Pipeline skill bundle into a beginner-friendly local script workflow assistant for inspiration capture, spark solidification, review, scoring, prediction, video-script writing, and text/static-page material generation.
 
 ## Current Phase
-Publish Retro Loop Complete
+Prompt Blind-Score Runner Complete
 
 ## Phases
 
@@ -156,6 +156,16 @@ Publish Retro Loop Complete
 - [x] Verify syntax, diff hygiene, API flow, and unchanged mini-program dirty files.
 - **Status:** complete
 
+### Phase 18: Prompt Blind-Score Runner
+- [x] Create rollback tag `before-prompt-blind-score-runner`.
+- [x] Add a minimal-input model blind-score runner for sparks/outlines/body text.
+- [x] Restrict the scoring prompt to title candidates, the current spark/body, and rubric dimensions only.
+- [x] Parse and validate strict JSON dimensions before writing `skill_score` fields.
+- [x] Fall back to the local compatible scorer when no model is configured or JSON parsing fails.
+- [x] Preserve deterministic local scoring for demo mode.
+- [x] Verify local fallback, model-backed scoring, syntax, diff hygiene, and unchanged mini-program dirty files.
+- **Status:** complete
+
 ## Key Questions
 1. Should the mini-program be a full AI workbench? Answer: no, it is only a quick inspiration capture and sync entry.
 2. Should v1 be SaaS-first? Answer: no, v1 is local-first with light cloud for sync and subscription.
@@ -185,6 +195,7 @@ Publish Retro Loop Complete
 | License behavior is mock-backed | Next pass connects to a production subscription/license backend. |
 | Desktop packaging is not implemented | Next pass adds Windows service and installer work. |
 | Publish/retro loop is local-only | Keep it local for MVP credibility; later connect metrics import and real platform data. |
+| Prompt blind-score is model-dependent | It improves scoring credibility with minimal input, but true Codex Task sub-agent isolation remains a future hardening step. |
 
 ## Notes
 - The current workbench is an executable local MVP for guided script workflow, not the full commercial product.
