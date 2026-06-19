@@ -244,6 +244,14 @@
       background: #fffdfa;
     }
 
+    .panel.section-collapsed .panel-head {
+      border-bottom: 0;
+    }
+
+    .panel.section-collapsed .panel-body {
+      display: none;
+    }
+
     .panel-actions {
       display: flex;
       align-items: center;
@@ -253,6 +261,12 @@
     }
 
     .collapse-toggle {
+      min-height: 30px;
+      padding: 5px 9px;
+      font-size: 12px;
+    }
+
+    .section-toggle {
       min-height: 30px;
       padding: 5px 9px;
       font-size: 12px;
@@ -376,6 +390,74 @@
       color: #4a3730;
       font-size: 12px;
       overflow-wrap: anywhere;
+    }
+
+    .output-actions {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .output-actions button {
+      min-height: 30px;
+      padding: 5px 9px;
+      font-size: 12px;
+    }
+
+    .score-breakdown {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .score-factor {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fffdfb;
+      color: #7b6f66;
+      padding: 2px 6px;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .starter-hints {
+      display: grid;
+      gap: 9px;
+      max-width: 760px;
+      margin-top: 2px;
+    }
+
+    .starter-hint {
+      border: 1px dashed #e6c7b8;
+      border-radius: 9px;
+      background: rgba(255, 248, 244, .72);
+      color: #7b4f3f;
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .starter-hint:hover {
+      background: #fff4ee;
+      box-shadow: 0 8px 18px rgba(199, 81, 47, .09);
+    }
+
+    .toast {
+      position: fixed;
+      z-index: 40;
+      right: 18px;
+      bottom: 18px;
+      max-width: min(360px, calc(100vw - 36px));
+      border: 1px solid #e6c7b8;
+      border-radius: 9px;
+      background: #fffdfa;
+      color: #4a3730;
+      box-shadow: 0 18px 48px rgba(91, 61, 42, .18);
+      padding: 10px 12px;
+      font-size: 13px;
     }
 
     .chat-material-chip {
@@ -701,7 +783,13 @@
               <p class="muted">内容形态、平台、赛道、人设都直接在对话里说。</p>
             </div>
           </div>
-          <div class="chat-log" id="chatLog"></div>
+          <div class="chat-log" id="chatLog">
+            <div class="starter-hints" id="starterHints">
+              <button class="starter-hint" data-prompt="我有一个选题：普通人为什么做个人IP总是半途而废？帮我先判断值不值得做。">判断一个选题值不值得做</button>
+              <button class="starter-hint" data-prompt="我是做个人IP口播，平台抖音，赛道是商业诊断。请先记住这个定位。">先补充我的账号定位</button>
+              <button class="starter-hint" data-prompt="基于最近的火花看板，帮我挑一个最适合今天写脚本的方向。">从火花里挑今天的脚本方向</button>
+            </div>
+          </div>
           <div class="chat-input">
             <div>
               <div class="chat-material-chip" id="chatMaterialChip" hidden>
@@ -726,7 +814,7 @@
 
       <aside class="column right-column" id="materialColumn">
         <button class="collapse-rail" id="expandMaterialPanel" type="button">展开素材</button>
-        <section class="panel">
+        <section class="panel" id="materialPanel">
           <div class="panel-head">
             <div>
               <h2>素材选择</h2>
@@ -739,6 +827,7 @@
                 <button data-material-tab="files">文件</button>
               </div>
               <button class="secondary collapse-toggle" id="toggleMaterialPanel" type="button" aria-expanded="true">收起</button>
+              <button class="secondary section-toggle" id="toggleMaterialSection" type="button" aria-expanded="true">折叠</button>
             </div>
           </div>
           <div class="panel-body">
@@ -746,13 +835,16 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel" id="outputPanel">
           <div class="panel-head">
             <div>
               <h2>产出看板</h2>
               <p class="muted">已生成内容会沉淀在这里。</p>
             </div>
-            <button class="secondary" id="loadFiles">刷新</button>
+            <div class="panel-actions">
+              <button class="secondary" id="loadFiles">刷新</button>
+              <button class="secondary section-toggle" id="toggleOutputSection" type="button" aria-expanded="true">折叠</button>
+            </div>
           </div>
           <div class="panel-body">
             <div class="output-board" id="outputBoard"></div>
@@ -811,6 +903,7 @@
   </div>
 
   <pre id="debugOutput" hidden>{}</pre>
+  <div class="toast" id="toast" hidden></div>
 
   <script>
     const $ = (id) => document.getElementById(id);
@@ -827,8 +920,11 @@
     let materialTab = "inbox";
     let selectedMaterial = "";
     let selectedMaterialLabel = "";
+    let selectedMaterialDisplay = "";
     let selectedMaterialPrompt = "";
     let localSparks = [];
+    let toastTimer = null;
+    const OUTPUT_TYPES = ["灵感固化卡", "审核结果", "视频脚本", "发布文案", "静态页文案"];
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -845,6 +941,16 @@
     function setStatus(text, ok = true) {
       $("statusText").textContent = text;
       $("statusText").className = ok ? "pill good" : "pill warn";
+    }
+
+    function showToast(text) {
+      const toast = $("toast");
+      toast.textContent = text;
+      toast.hidden = false;
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => {
+        toast.hidden = true;
+      }, 2200);
     }
 
     async function loadStatus() {
@@ -873,10 +979,11 @@
       };
       await api("/api/config", { method: "POST", body: JSON.stringify(payload) });
       await loadConfig();
-      setStatus("配置已保存");
+      showToast("配置已保存");
     }
 
     function addMessage(role, text, actions = []) {
+      if (role === "user") hideStarterHints();
       const node = document.createElement("div");
       node.className = `message ${role}`;
       node.textContent = text;
@@ -894,6 +1001,11 @@
       }
       $("chatLog").appendChild(node);
       $("chatLog").scrollTop = $("chatLog").scrollHeight;
+    }
+
+    function hideStarterHints() {
+      const hints = $("starterHints");
+      if (hints) hints.hidden = true;
     }
 
     async function sendChat(forcedMessage) {
@@ -944,14 +1056,41 @@
     }
 
     function scoreSpark(item) {
+      return scoreSparkBreakdown(item).score;
+    }
+
+    function scoreSparkBreakdown(item) {
       const text = item.content || item.media_url || "";
       let score = 56;
-      score += Math.min(18, Math.floor(text.length / 6));
-      if (/为什么|怎么|如何|反差|误区|复盘|趋势|普通人|新手/.test(text)) score += 10;
-      if (/不要|总是|卡|失败|半途/.test(text)) score += 5;
-      if (item.tags?.length) score += Math.min(6, item.tags.length * 2);
-      if (item.sync_status === "processed") score -= 6;
-      return Math.max(42, Math.min(96, score));
+      const factors = [{ label: "基础可读性", delta: 56 }];
+      const lengthScore = Math.min(18, Math.floor(text.length / 6));
+      if (lengthScore) {
+        score += lengthScore;
+        factors.push({ label: "信息完整", delta: lengthScore });
+      }
+      if (/为什么|怎么|如何|反差|误区|复盘|趋势|普通人|新手/.test(text)) {
+        score += 10;
+        factors.push({ label: "明确问题", delta: 10 });
+      }
+      if (/不要|总是|卡|失败|半途/.test(text)) {
+        score += 5;
+        factors.push({ label: "有痛点", delta: 5 });
+      }
+      if (item.tags?.length) {
+        const tagScore = Math.min(6, item.tags.length * 2);
+        score += tagScore;
+        factors.push({ label: "标签明确", delta: tagScore });
+      }
+      if (item.sync_status === "processed") {
+        score -= 6;
+        factors.push({ label: "已处理", delta: -6 });
+      }
+      if (text.length < 12) {
+        score -= 8;
+        factors.push({ label: "信息不足", delta: -8 });
+      }
+      const finalScore = Math.max(42, Math.min(96, score));
+      return { score: finalScore, factors: factors.slice(0, 4) };
     }
 
     async function loadInbox() {
@@ -977,14 +1116,19 @@
       }
       items.forEach((item) => {
         const content = item.content || item.media_url || "(empty)";
+        const scoring = scoreSparkBreakdown(item);
         const node = document.createElement("div");
         node.className = `spark-card ${selectedMaterial === content ? "active" : ""}`;
+        node.title = scoring.factors.map((factor) => `${factor.label} ${factor.delta >= 0 ? "+" : ""}${factor.delta}`).join(" / ");
         node.innerHTML = `
           <div class="score-row">
             <span class="tiny">${escapeHtml(item.source || typeLabel(item.type))}</span>
-            <span class="score-pill">${scoreSpark(item)} 分</span>
+            <span class="score-pill">${scoring.score} 分</span>
           </div>
           <div class="spark-title">${escapeHtml(content)}</div>
+          <div class="score-breakdown">
+            ${scoring.factors.map((factor) => `<span class="score-factor">${escapeHtml(factor.label)} ${factor.delta >= 0 ? "+" : ""}${factor.delta}</span>`).join("")}
+          </div>
         `;
         node.addEventListener("click", () => selectMaterial(content, "spark"));
         board.appendChild(node);
@@ -1018,7 +1162,8 @@
             items.push({
               label: meta.type,
               content: `${meta.type}：${meta.name}`,
-              note: groupLabel(group)
+              note: groupLabel(group),
+              path: file.path
             });
           });
         });
@@ -1037,6 +1182,8 @@
         node.addEventListener("click", async () => {
           if (item.action) {
             await item.action();
+          } else if (item.path) {
+            await continueFromFile(item.path, item.label, item.content);
           } else {
             selectMaterial(item.content, item.label);
           }
@@ -1045,19 +1192,20 @@
       });
     }
 
-    function selectMaterial(content, label) {
+    function selectMaterial(content, label, display = "") {
       if (selectedMaterial === content) {
         clearSelectedMaterial();
         return;
       }
       selectedMaterial = content;
       selectedMaterialLabel = label;
+      selectedMaterialDisplay = display || content;
       selectedMaterialPrompt = `${label === "spark" ? "固化这个灵感" : "基于这个素材继续"}：`;
       $("chatInput").value = selectedMaterialPrompt;
       $("chatInput").focus();
       renderSparkBoard();
       renderMaterialList();
-      setStatus("已添加素材标签");
+      showToast("已添加素材标签");
     }
 
     function composeChatMessage(rawMessage) {
@@ -1076,7 +1224,8 @@
       }
       chip.hidden = false;
       const label = selectedMaterialLabel === "spark" ? "火花" : selectedMaterialLabel;
-      $("chatMaterialTitle").textContent = `${label}：${selectedMaterial}`;
+      const display = selectedMaterialDisplay || selectedMaterial;
+      $("chatMaterialTitle").textContent = display.startsWith(`${label}：`) ? display : `${label}：${display}`;
     }
 
     function clearSelectedMaterial(options = {}) {
@@ -1087,10 +1236,11 @@
       }
       selectedMaterial = "";
       selectedMaterialLabel = "";
+      selectedMaterialDisplay = "";
       selectedMaterialPrompt = "";
       renderSparkBoard();
       renderMaterialList();
-      if (!quiet) setStatus("已删除素材标签");
+      if (!quiet) showToast("已删除素材标签");
     }
 
     async function loadFiles() {
@@ -1111,17 +1261,11 @@
       const name = file.name || "未命名文件";
       const lower = name.toLowerCase();
       const type = [
-        [/spark|card|idea/, "灵感固化卡"],
-        [/review|audit/, "审核结果"],
-        [/score/, "评分结果"],
-        [/predict/, "预测结果"],
-        [/topic|analysis/, "选题分析"],
-        [/video|script|speaking/, "视频脚本"],
-        [/publish|copy/, "发布文案"],
+        [/spark|card|idea|brief/, "灵感固化卡"],
+        [/review|audit|score|predict|topic|analysis/, "审核结果"],
+        [/video|script|speaking|storyboard/, "视频脚本"],
+        [/publish|copy|title|text/, "发布文案"],
         [/static|page/, "静态页文案"],
-        [/storyboard/, "分镜方案"],
-        [/brief/, "选题简报"],
-        [/title|text/, "标题文案"]
       ].find(([pattern]) => pattern.test(lower))?.[1] || groupLabel(file.group || "");
       return { name, type, modifiedAt: file.modified_at || "" };
     }
@@ -1146,6 +1290,7 @@
       cards.forEach((card) => {
         const node = document.createElement("div");
         node.className = "output-card";
+        const latest = card.files[0];
         const rows = card.files.slice(0, 3).map((file) => {
           const meta = fileMeta(file);
           return `<div class="output-file"><span>${escapeHtml(meta.name)}</span><span class="tiny">${escapeHtml(meta.modifiedAt.slice(5, 16).replace("T", " "))}</span></div>`;
@@ -1157,31 +1302,90 @@
           </div>
           <div class="tiny">${escapeHtml(card.note)}</div>
           <div class="output-files">${rows}</div>
+          <div class="output-actions"></div>
         `;
+        const actions = node.querySelector(".output-actions");
+        [
+          { label: "打开", handler: () => openOutputFile(latest.path) },
+          { label: "复制", handler: () => copyOutputFile(latest.path) },
+          { label: "继续生成", handler: () => continueFromFile(latest.path, card.type, `${card.type}：${latest.name}`) }
+        ].forEach((action) => {
+          const button = document.createElement("button");
+          button.className = "secondary";
+          button.type = "button";
+          button.textContent = action.label;
+          button.addEventListener("click", action.handler);
+          actions.appendChild(button);
+        });
         board.appendChild(node);
       });
     }
 
+    async function readOutputFile(path) {
+      return api("/api/file/read", { method: "POST", body: JSON.stringify({ path }) });
+    }
+
+    async function openOutputFile(path) {
+      await api("/api/file/open", { method: "POST", body: JSON.stringify({ path }) });
+      showToast("已打开产物文件");
+    }
+
+    async function copyOutputFile(path) {
+      const result = await readOutputFile(path);
+      await copyText(result.content || "");
+      showToast("已复制产物内容");
+    }
+
+    async function continueFromFile(path, label, display) {
+      const result = await readOutputFile(path);
+      selectMaterial(result.content || display, label, display);
+      showToast("已把产物放入对话");
+    }
+
+    async function copyText(text) {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const temp = document.createElement("textarea");
+      temp.value = text;
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand("copy");
+      temp.remove();
+    }
+
     function outputCards() {
       const buckets = new Map();
+      OUTPUT_TYPES.forEach((type) => buckets.set(type, []));
       Object.entries(fileGroups).forEach(([group, files]) => {
         contentFiles(files).forEach((file) => {
           const enriched = { ...file, group };
           const meta = fileMeta(enriched);
-          if (!buckets.has(meta.type)) buckets.set(meta.type, []);
+          if (!OUTPUT_TYPES.includes(meta.type)) return;
           buckets.get(meta.type).push(enriched);
         });
       });
-      return Array.from(buckets.entries()).map(([type, files]) => ({
+      return Array.from(buckets.entries()).filter(([, files]) => files.length).map(([type, files]) => ({
         type,
         files: files.sort((a, b) => String(b.modified_at || "").localeCompare(String(a.modified_at || ""))),
-        note: type === "灵感归档" ? "从手机或本地收进来的原始灵感" : "可继续放入对话生成下一步"
+        note: outputNote(type)
       })).sort((a, b) => outputRank(a.type) - outputRank(b.type));
     }
 
     function outputRank(type) {
-      const index = ["灵感固化卡", "审核结果", "评分结果", "预测结果", "选题分析", "视频脚本", "发布文案", "静态页文案", "分镜方案", "选题简报", "标题文案", "灵感归档"].indexOf(type);
+      const index = OUTPUT_TYPES.indexOf(type);
       return index === -1 ? 99 : index;
+    }
+
+    function outputNote(type) {
+      return {
+        "灵感固化卡": "可作为下一轮脚本或审核的起点",
+        "审核结果": "判断值不值得做，并保留风险与改法",
+        "视频脚本": "可继续生成分镜、口播或剪辑方案",
+        "发布文案": "标题、简介和平台发布文案",
+        "静态页文案": "适合沉淀成长文或展示页"
+      }[type] || "可继续放入对话生成下一步";
     }
 
     async function pullCloud() {
@@ -1191,7 +1395,7 @@
       });
       await loadInbox();
       await loadFiles();
-      setStatus(result.note || `已拉取 ${result.pulled} 条云端灵感`);
+      showToast(result.note || `已拉取 ${result.pulled} 条云端灵感`);
     }
 
     async function activateLicense() {
@@ -1200,14 +1404,14 @@
       await api("/api/license/activate", { method: "POST", body: JSON.stringify({ token }) });
       $("licenseToken").value = "";
       await loadConfig();
-      setStatus("授权已写入本地");
+      showToast("授权已写入本地");
     }
 
     async function testModel() {
       await saveConfig();
       try {
         const result = await api("/api/llm/test", { method: "POST", body: JSON.stringify({}) });
-        setStatus(`模型测试成功：${result.reply || result.note}`);
+        showToast(`模型测试成功：${result.reply || result.note}`);
       } catch (error) {
         setStatus(`模型测试失败：${error.message}`, false);
       }
@@ -1225,7 +1429,7 @@
         body: JSON.stringify({ device_name: "desktop-workbench" })
       });
       await loadConfig();
-      setStatus(`已绑定设备：${result.device.device_id}`);
+      showToast(`已绑定设备：${result.device.device_id}`);
     }
 
     function openSettings() {
@@ -1236,7 +1440,7 @@
       $("settingsBackdrop").hidden = true;
     }
 
-    function setRailCollapsed(kind, collapsed) {
+    function setRailCollapsed(kind, collapsed, options = {}) {
       const isSpark = kind === "spark";
       const column = $(isSpark ? "sparkColumn" : "materialColumn");
       const toggle = $(isSpark ? "toggleSparkPanel" : "toggleMaterialPanel");
@@ -1245,7 +1449,26 @@
       $("workspace").classList.toggle(workspaceClass, collapsed);
       toggle.textContent = collapsed ? "展开" : "收起";
       toggle.setAttribute("aria-expanded", String(!collapsed));
-      setStatus(`${isSpark ? "火花栏" : "素材栏"}已${collapsed ? "收起" : "展开"}`);
+      localStorage.setItem(`biemuoji:${kind}Collapsed`, String(collapsed));
+      if (!options.quiet) showToast(`${isSpark ? "火花栏" : "素材栏"}已${collapsed ? "收起" : "展开"}`);
+    }
+
+    function setSectionCollapsed(section, collapsed, options = {}) {
+      const isMaterial = section === "material";
+      const panel = $(isMaterial ? "materialPanel" : "outputPanel");
+      const toggle = $(isMaterial ? "toggleMaterialSection" : "toggleOutputSection");
+      panel.classList.toggle("section-collapsed", collapsed);
+      toggle.textContent = collapsed ? "展开" : "折叠";
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      localStorage.setItem(`biemuoji:${section}SectionCollapsed`, String(collapsed));
+      if (!options.quiet) showToast(`${isMaterial ? "素材选择" : "产出看板"}已${collapsed ? "折叠" : "展开"}`);
+    }
+
+    function restoreCollapsedState() {
+      setRailCollapsed("spark", localStorage.getItem("biemuoji:sparkCollapsed") === "true", { quiet: true });
+      setRailCollapsed("material", localStorage.getItem("biemuoji:materialCollapsed") === "true", { quiet: true });
+      setSectionCollapsed("material", localStorage.getItem("biemuoji:materialSectionCollapsed") === "true", { quiet: true });
+      setSectionCollapsed("output", localStorage.getItem("biemuoji:outputSectionCollapsed") === "true", { quiet: true });
     }
 
     function typeLabel(type) {
@@ -1289,6 +1512,7 @@
 
     document.querySelectorAll("[data-prompt]").forEach((button) => {
       button.addEventListener("click", () => {
+        hideStarterHints();
         $("chatInput").value = button.dataset.prompt;
         $("chatInput").focus();
       });
@@ -1316,6 +1540,8 @@
     $("expandSparkPanel").addEventListener("click", () => setRailCollapsed("spark", false));
     $("toggleMaterialPanel").addEventListener("click", () => setRailCollapsed("material", true));
     $("expandMaterialPanel").addEventListener("click", () => setRailCollapsed("material", false));
+    $("toggleMaterialSection").addEventListener("click", () => setSectionCollapsed("material", !$("materialPanel").classList.contains("section-collapsed")));
+    $("toggleOutputSection").addEventListener("click", () => setSectionCollapsed("output", !$("outputPanel").classList.contains("section-collapsed")));
     $("settingsBackdrop").addEventListener("click", (event) => {
       if (event.target.id === "settingsBackdrop") closeSettings();
     });
@@ -1328,6 +1554,7 @@
     $("linkDevice").addEventListener("click", linkDevice);
     $("loadFiles").addEventListener("click", loadFiles);
     $("pullCloud").addEventListener("click", pullCloud);
+    restoreCollapsedState();
 
     (async function init() {
       try {

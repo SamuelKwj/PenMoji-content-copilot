@@ -221,6 +221,20 @@ def list_project_files(config: dict) -> dict:
     return {"project_path": str(project_path), "groups": groups}
 
 
+def resolve_project_file(config: dict, raw_path: str) -> Path:
+    raw_project_path = config.get("content_project_path") or ""
+    project_path = Path(raw_project_path) if raw_project_path.strip() else Path()
+    project_root = project_path.resolve()
+    resolved = Path(raw_path).resolve()
+    try:
+        resolved.relative_to(project_root)
+    except ValueError as exc:
+        raise ValueError("file must be inside the content project") from exc
+    if not resolved.exists() or not resolved.is_file():
+        raise FileNotFoundError("file not found")
+    return resolved
+
+
 def safe_slug(text: str, fallback: str = "idea", max_len: int = 36) -> str:
     cleaned = re.sub(r"[^\w\u4e00-\u9fff]+", "-", text, flags=re.UNICODE).strip("-_")
     cleaned = cleaned[:max_len].strip("-_")
@@ -824,6 +838,24 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             config = load_config(include_secret=True)
             result = test_openai_compatible(config)
             self.send_json(result, HTTPStatus.OK if result["ok"] else HTTPStatus.BAD_GATEWAY)
+        elif path == "/api/file/read":
+            config = load_config(include_secret=False)
+            try:
+                file_path = resolve_project_file(config, payload.get("path", ""))
+                content = file_path.read_text(encoding="utf-8", errors="replace")
+            except (ValueError, FileNotFoundError, OSError) as exc:
+                self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            self.send_json({"status": "ok", "name": file_path.name, "content": content})
+        elif path == "/api/file/open":
+            config = load_config(include_secret=False)
+            try:
+                file_path = resolve_project_file(config, payload.get("path", ""))
+                os.startfile(file_path)  # type: ignore[attr-defined]
+            except (ValueError, FileNotFoundError, OSError) as exc:
+                self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            self.send_json({"status": "ok", "path": str(file_path)})
         elif path == "/api/inbox":
             item = normalize_inspiration(payload)
             append_jsonl(INBOX_PATH, item)
