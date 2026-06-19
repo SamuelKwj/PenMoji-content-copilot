@@ -390,8 +390,18 @@
       padding: 12px;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
       gap: 10px;
       background: #fffdfa;
+    }
+
+    #sendChat {
+      align-self: end;
+      width: 68px;
+      height: 44px;
+      min-height: 44px;
+      padding: 0 14px;
+      white-space: nowrap;
     }
 
     .chat-input textarea {
@@ -522,6 +532,9 @@
       }
       .chat-input {
         grid-template-columns: 1fr;
+      }
+      #sendChat {
+        width: 100%;
       }
       .grid-2 {
         grid-template-columns: 1fr;
