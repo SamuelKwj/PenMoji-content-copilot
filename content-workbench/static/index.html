@@ -202,6 +202,19 @@
       gap: 14px;
       padding: 14px;
       min-height: 0;
+      transition: grid-template-columns .18s ease;
+    }
+
+    .workspace.spark-collapsed {
+      grid-template-columns: 48px minmax(430px, 1fr) 320px;
+    }
+
+    .workspace.material-collapsed {
+      grid-template-columns: 292px minmax(430px, 1fr) 48px;
+    }
+
+    .workspace.spark-collapsed.material-collapsed {
+      grid-template-columns: 48px minmax(430px, 1fr) 48px;
     }
 
     .column {
@@ -230,6 +243,48 @@
       padding: 13px 14px;
       border-bottom: 1px solid var(--line);
       background: #fffdfa;
+    }
+
+    .panel-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .collapse-toggle {
+      min-height: 30px;
+      padding: 5px 9px;
+      font-size: 12px;
+    }
+
+    .collapse-rail {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: calc(100vh - 90px);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #fffdfa;
+      color: #4a3730;
+      box-shadow: var(--shadow);
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      letter-spacing: 0;
+    }
+
+    .column.collapsed {
+      gap: 0;
+    }
+
+    .column.collapsed .panel {
+      display: none;
+    }
+
+    .column.collapsed .collapse-rail {
+      display: flex;
     }
 
     .panel-body {
@@ -388,16 +443,19 @@
     .chat-input {
       border-top: 1px solid var(--line);
       padding: 12px;
+      background: #fffdfa;
+    }
+
+    .compose-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       align-items: end;
       gap: 10px;
-      background: #fffdfa;
     }
 
     #sendChat {
       align-self: end;
-      width: 68px;
+      width: 78px;
       height: 44px;
       min-height: 44px;
       padding: 0 14px;
@@ -531,10 +589,22 @@
         height: min(720px, calc(100vh - 94px));
       }
       .chat-input {
+        display: block;
+      }
+      .compose-row {
         grid-template-columns: 1fr;
       }
       #sendChat {
         width: 100%;
+      }
+      .workspace.spark-collapsed,
+      .workspace.material-collapsed,
+      .workspace.spark-collapsed.material-collapsed {
+        grid-template-columns: 1fr;
+      }
+      .collapse-rail {
+        min-height: 44px;
+        writing-mode: horizontal-tb;
       }
       .grid-2 {
         grid-template-columns: 1fr;
@@ -562,15 +632,19 @@
       </div>
     </header>
 
-    <div class="workspace">
-      <aside class="column left-column">
+    <div class="workspace" id="workspace">
+      <aside class="column left-column" id="sparkColumn">
+        <button class="collapse-rail" id="expandSparkPanel" type="button">展开火花</button>
         <section class="panel">
           <div class="panel-head">
             <div>
               <h2>火花看板</h2>
               <p class="muted">灵感会先进入这里，带一个初步评分。</p>
             </div>
-            <span class="pill" id="sparkCount">0 条</span>
+            <div class="panel-actions">
+              <span class="pill" id="sparkCount">0 条</span>
+              <button class="secondary collapse-toggle" id="toggleSparkPanel" type="button" aria-expanded="true">收起</button>
+            </div>
           </div>
           <div class="panel-body">
             <div class="spark-board" id="sparkBoard"></div>
@@ -594,7 +668,10 @@
                 <div class="chat-material-title" id="chatMaterialTitle"></div>
                 <button class="secondary material-chip-close" id="clearSelectedMaterial" type="button" aria-label="删除素材">×</button>
               </div>
-              <textarea id="chatInput" placeholder="输入灵感，或直接说：我是做个人IP口播，平台抖音，赛道是商业诊断，帮我固化这个选题..."></textarea>
+              <div class="compose-row">
+                <textarea id="chatInput" placeholder="输入灵感，或直接说：我是做个人IP口播，平台抖音，赛道是商业诊断，帮我固化这个选题..."></textarea>
+                <button id="sendChat">发送</button>
+              </div>
               <div class="quick-row">
                 <button class="quick-chip" data-prompt="我是做口播内容，平台抖音，赛道是个人IP，请先记住这个定位。">补充定位</button>
                 <button class="quick-chip" data-prompt="固化这个灵感：">固化灵感</button>
@@ -602,22 +679,25 @@
                 <button class="quick-chip" data-prompt="写视频脚本：">写脚本</button>
               </div>
             </div>
-            <button id="sendChat">发送</button>
           </div>
         </section>
       </main>
 
-      <aside class="column right-column">
+      <aside class="column right-column" id="materialColumn">
+        <button class="collapse-rail" id="expandMaterialPanel" type="button">展开素材</button>
         <section class="panel">
           <div class="panel-head">
             <div>
               <h2>素材选择</h2>
               <p class="muted">点击素材，会带标签进入对话框。</p>
             </div>
-            <div class="tabs-lite">
-              <button class="active" data-material-tab="inbox">灵感</button>
-              <button data-material-tab="mobile">手机</button>
-              <button data-material-tab="files">文件</button>
+            <div class="panel-actions">
+              <div class="tabs-lite">
+                <button class="active" data-material-tab="inbox">灵感</button>
+                <button data-material-tab="mobile">手机</button>
+                <button data-material-tab="files">文件</button>
+              </div>
+              <button class="secondary collapse-toggle" id="toggleMaterialPanel" type="button" aria-expanded="true">收起</button>
             </div>
           </div>
           <div class="panel-body">
@@ -1039,6 +1119,18 @@
       $("settingsBackdrop").hidden = true;
     }
 
+    function setRailCollapsed(kind, collapsed) {
+      const isSpark = kind === "spark";
+      const column = $(isSpark ? "sparkColumn" : "materialColumn");
+      const toggle = $(isSpark ? "toggleSparkPanel" : "toggleMaterialPanel");
+      const workspaceClass = isSpark ? "spark-collapsed" : "material-collapsed";
+      column.classList.toggle("collapsed", collapsed);
+      $("workspace").classList.toggle(workspaceClass, collapsed);
+      toggle.textContent = collapsed ? "展开" : "收起";
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      setStatus(`${isSpark ? "火花栏" : "素材栏"}已${collapsed ? "收起" : "展开"}`);
+    }
+
     function typeLabel(type) {
       return {
         text: "文字灵感",
@@ -1103,6 +1195,10 @@
     $("openSettings").addEventListener("click", openSettings);
     $("closeSettings").addEventListener("click", closeSettings);
     $("clearSelectedMaterial").addEventListener("click", () => clearSelectedMaterial());
+    $("toggleSparkPanel").addEventListener("click", () => setRailCollapsed("spark", true));
+    $("expandSparkPanel").addEventListener("click", () => setRailCollapsed("spark", false));
+    $("toggleMaterialPanel").addEventListener("click", () => setRailCollapsed("material", true));
+    $("expandMaterialPanel").addEventListener("click", () => setRailCollapsed("material", false));
     $("settingsBackdrop").addEventListener("click", (event) => {
       if (event.target.id === "settingsBackdrop") closeSettings();
     });
