@@ -169,7 +169,7 @@ def normalize_inspiration(item: dict, user_id: str = "local-user") -> dict:
     allowed_types = {"text", "voice", "image", "link", "video_link"}
     item_type = item.get("type") if item.get("type") in allowed_types else "text"
     tags = item.get("tags") if isinstance(item.get("tags"), list) else []
-    return {
+    normalized = {
         "id": item.get("id") or str(uuid.uuid4()),
         "user_id": item.get("user_id") or user_id,
         "type": item_type,
@@ -181,6 +181,10 @@ def normalize_inspiration(item: dict, user_id: str = "local-user") -> dict:
         "local_path": item.get("local_path", ""),
         "source_url": item.get("source_url", ""),
     }
+    for key in ("skill_score", "blind_score", "score_source", "score_breakdown", "rubric_breakdown"):
+        if key in item:
+            normalized[key] = item[key]
+    return normalized
 
 
 def mirror_to_project_archive(item: dict, config: dict) -> str:

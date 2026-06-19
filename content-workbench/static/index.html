@@ -510,6 +510,13 @@
       font-weight: 740;
     }
 
+    .score-pill.pending {
+      color: #7b6f66;
+      background: #fff8f4;
+      border-style: dashed;
+      font-weight: 680;
+    }
+
     .chat-panel {
       display: grid;
       grid-template-rows: auto minmax(0, 1fr) auto;
@@ -762,7 +769,7 @@
           <div class="panel-head">
             <div>
               <h2>火花看板</h2>
-              <p class="muted">灵感会先进入这里，带一个初步评分。</p>
+              <p class="muted">未跑 skill 时只显示初筛线索；正式分数来自盲打分。</p>
             </div>
             <div class="panel-actions">
               <span class="pill" id="sparkCount">0 条</span>
@@ -1055,42 +1062,72 @@
       renderSparkBoard();
     }
 
-    function scoreSpark(item) {
-      return scoreSparkBreakdown(item).score;
+    function sparkEvaluation(item) {
+      const score = skillScore(item);
+      if (score) {
+        return {
+          state: "scored",
+          label: `${score.value} 分`,
+          title: `来自 ${score.source}`,
+          factors: skillScoreFactors(item),
+        };
+      }
+      const factors = sparkScreeningSignals(item);
+      return {
+        state: "pending",
+        label: "待盲评",
+        title: "当前只做火花初筛；正式评分必须由 cheat-score-blind 写入",
+        factors,
+      };
     }
 
-    function scoreSparkBreakdown(item) {
-      const text = item.content || item.media_url || "";
-      let score = 56;
-      const factors = [{ label: "基础可读性", delta: 56 }];
-      const lengthScore = Math.min(18, Math.floor(text.length / 6));
-      if (lengthScore) {
-        score += lengthScore;
-        factors.push({ label: "信息完整", delta: lengthScore });
+    function skillScore(item) {
+      const source = String(item.score_source || "").toLowerCase();
+      const value = item.skill_score ?? item.blind_score;
+      if (Number.isFinite(Number(value))) {
+        return { value: Math.round(Number(value)), source: item.score_source || "skill blind score" };
       }
+      if (source.includes("blind") && Number.isFinite(Number(item.score))) {
+        return { value: Math.round(Number(item.score)), source: item.score_source };
+      }
+      return null;
+    }
+
+    function skillScoreFactors(item) {
+      const raw = Array.isArray(item.score_breakdown) ? item.score_breakdown : item.rubric_breakdown;
+      if (!Array.isArray(raw) || !raw.length) return [{ label: "skill 盲打分", value: "已完成" }];
+      return raw.slice(0, 4).map((factor) => ({
+        label: factor.label || factor.dimension || "维度",
+        value: factor.value ?? factor.score ?? factor.delta ?? "",
+      }));
+    }
+
+    function sparkScreeningSignals(item) {
+      const text = item.content || item.media_url || "";
+      const factors = [];
+      if (text.length >= 12) factors.push({ label: "信息量", value: "够初筛" });
       if (/为什么|怎么|如何|反差|误区|复盘|趋势|普通人|新手/.test(text)) {
-        score += 10;
-        factors.push({ label: "明确问题", delta: 10 });
+        factors.push({ label: "问题", value: "较明确" });
       }
       if (/不要|总是|卡|失败|半途/.test(text)) {
-        score += 5;
-        factors.push({ label: "有痛点", delta: 5 });
+        factors.push({ label: "痛点", value: "可感知" });
       }
       if (item.tags?.length) {
-        const tagScore = Math.min(6, item.tags.length * 2);
-        score += tagScore;
-        factors.push({ label: "标签明确", delta: tagScore });
+        factors.push({ label: "标签", value: `${item.tags.length} 个` });
       }
       if (item.sync_status === "processed") {
-        score -= 6;
-        factors.push({ label: "已处理", delta: -6 });
+        factors.push({ label: "状态", value: "已处理" });
       }
       if (text.length < 12) {
-        score -= 8;
-        factors.push({ label: "信息不足", delta: -8 });
+        factors.push({ label: "信息量", value: "不足" });
       }
-      const finalScore = Math.max(42, Math.min(96, score));
-      return { score: finalScore, factors: factors.slice(0, 4) };
+      return (factors.length ? factors : [{ label: "初筛", value: "待补信息" }]).slice(0, 4);
+    }
+
+    function scoreFactorText(factor) {
+      if (factor.value === "" || factor.value === undefined || factor.value === null) return factor.label;
+      const value = typeof factor.value === "number" && factor.value > 0 ? `+${factor.value}` : factor.value;
+      return `${factor.label} ${value}`;
     }
 
     async function loadInbox() {
@@ -1116,18 +1153,18 @@
       }
       items.forEach((item) => {
         const content = item.content || item.media_url || "(empty)";
-        const scoring = scoreSparkBreakdown(item);
+        const evaluation = sparkEvaluation(item);
         const node = document.createElement("div");
         node.className = `spark-card ${selectedMaterial === content ? "active" : ""}`;
-        node.title = scoring.factors.map((factor) => `${factor.label} ${factor.delta >= 0 ? "+" : ""}${factor.delta}`).join(" / ");
+        node.title = [evaluation.title, ...evaluation.factors.map(scoreFactorText)].join(" / ");
         node.innerHTML = `
           <div class="score-row">
             <span class="tiny">${escapeHtml(item.source || typeLabel(item.type))}</span>
-            <span class="score-pill">${scoring.score} 分</span>
+            <span class="score-pill ${evaluation.state === "pending" ? "pending" : ""}">${escapeHtml(evaluation.label)}</span>
           </div>
           <div class="spark-title">${escapeHtml(content)}</div>
           <div class="score-breakdown">
-            ${scoring.factors.map((factor) => `<span class="score-factor">${escapeHtml(factor.label)} ${factor.delta >= 0 ? "+" : ""}${factor.delta}</span>`).join("")}
+            ${evaluation.factors.map((factor) => `<span class="score-factor">${escapeHtml(scoreFactorText(factor))}</span>`).join("")}
           </div>
         `;
         node.addEventListener("click", () => selectMaterial(content, "spark"));
