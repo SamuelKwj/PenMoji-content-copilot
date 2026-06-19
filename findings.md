@@ -47,6 +47,8 @@
 | Move creator positioning into dialogue | Content form, platform, niche, and persona are part of guided context capture, not persistent form fields. |
 | Use a scored spark board for the left rail | New inspirations are recurring work items and need quick triage rather than a static settings/sidebar. |
 | Use material selection plus output board on the right | Materials can be clicked into the dialogue, while outputs are kept visible as generated assets. |
+| Store spark scores in inbox fields | The UI should read `skill_score`, `score_breakdown`, and `score_source`; it should not invent frontend-only scores. |
+| Use a local blind-score-compatible adapter for the desktop MVP | The Python workbench cannot spawn Codex Task sub-agents, so v1 writes the same fields with `cheat-score-blind-compatible/local-v0`; a real provider can replace it later. |
 
 ## Issues Encountered
 | Issue | Resolution |
@@ -62,6 +64,8 @@
 | A topic containing `验证` caused the `灵感固化` button to route to review in the old backend | Updated `route_deliverables` so explicit command prefixes choose the step first, restarted the local service, and verified the running API/browser path. |
 | UI work drifted into changing the product's functional blocks | Reverted `static/index.html` to the prior function-block layout and documented that future UI work should stay visual/interaction-focused unless structure changes are explicitly requested. |
 | Dialogue text containing `口播内容` was routed to video script | Removed bare `口播` from generic script keywords; explicit `口播脚本` and `口播稿` still route to video script. |
+| Spark board scores looked like real skill scores even when they were frontend heuristics | Replaced frontend scoring with clickable `待盲评`; scores now come from backend-written score fields. |
+| Demo flow could hang when a configured model endpoint was unreachable | Added `force_local` for demo chat calls so presentations use deterministic fallback and finish quickly. |
 
 ## Resources
 - Existing pipeline root: `C:\Users\samue\Documents\内容生产agent\Content Creator Pipeline`
@@ -78,3 +82,5 @@
 - Restore check confirmed the served HTML contains `引导流程`, `素材与产物`, and `基础设置`, and no longer contains `6 步内容流程`, `灵感库`, or `nextCard`.
 - Final clean-entry UI check confirmed `火花看板`, `引导对话`, `素材选择`, `产出看板`, gear settings, Escape close, and material-to-dialogue insertion render/work on desktop/mobile with no console errors.
 - Runtime route check confirmed `测试灵感...平台抖音，口播内容` routes to spark solidification, while `写视频脚本...` still routes to video script.
+- Spark blind-score check confirmed clicking `待盲评` writes `skill_score`, displays dimension chips, keeps service status untouched, and sorts scored sparks above pending sparks.
+- Demo-flow check confirmed one click can produce `灵感固化卡`, `审核结果`, `视频脚本`, `发布文案`, and `静态页文案` in the output board with no browser console errors.

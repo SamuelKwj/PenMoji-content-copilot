@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import mimetypes
 import os
@@ -35,6 +36,15 @@ DELIVERABLE_LABELS = {
     "text_pack": "标题/发布文字",
     "static_page": "静态页文案",
 }
+SPARK_RUBRIC = [
+    {"key": "HP", "label": "钩子强度", "weight": 1.5},
+    {"key": "ER", "label": "情感共鸣", "weight": 1.5},
+    {"key": "SR", "label": "社会议题", "weight": 1.5},
+    {"key": "QL", "label": "金句密度", "weight": 1.0},
+    {"key": "NA", "label": "叙事性", "weight": 1.0},
+    {"key": "AB", "label": "受众广度", "weight": 1.0},
+    {"key": "SAT", "label": "反差讽刺", "weight": 1.0},
+]
 
 
 def now_iso() -> str:
@@ -505,6 +515,159 @@ def render_score(topic: str) -> str:
 """
 
 
+def unique_strings(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        cleaned = re.sub(r"\s+", " ", item).strip(" ，。！？:：")
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            result.append(cleaned)
+    return result
+
+
+def title_topic(topic: str, max_len: int = 18) -> str:
+    cleaned = extract_topic(topic)
+    cleaned = re.sub(r"^(测试火花|演示流|火花|灵感)[：:]\s*", "", cleaned)
+    cleaned = re.sub(r"[\r\n]+", " ", cleaned).strip()
+    return cleaned[:max_len].strip(" ，。！？:：") or "这个选题"
+
+
+def generate_title_candidates(topic: str) -> list[str]:
+    short = title_topic(topic)
+    question_title = short if "为什么" in short else f"为什么{short}总是卡住？"
+    candidates = [
+        question_title,
+        "你以为是执行力问题，其实是入口没想清楚",
+        f"{short}背后的真正问题",
+        "普通人做个人IP前，先问自己这个问题",
+    ]
+    return unique_strings(candidates)[:4]
+
+
+def has_any(text: str, tokens: list[str]) -> bool:
+    return any(token in text for token in tokens)
+
+
+def dim_result(key: str, label: str, score: int, confidence: str, reason: str) -> dict:
+    return {
+        "dimension": key,
+        "label": f"{key} {label}",
+        "score": max(0, min(5, score)),
+        "max": 5,
+        "confidence": confidence,
+        "reason": reason,
+    }
+
+
+def score_spark_dimensions(topic: str, selected_title: str) -> list[dict]:
+    text = f"{selected_title}\n{topic}"
+    length = len(topic)
+    concrete = has_any(text, ["比如", "客户", "我", "你", "场景", "经历", "案例", "一次", "今天"])
+    pain = has_any(text, ["痛", "卡", "失败", "焦虑", "半途", "拖延", "不会", "不敢", "困扰", "问题"])
+    contrast = has_any(text, ["以为", "其实", "不是", "而是", "反差", "误区", "真相", "别急"])
+    broad = has_any(text, ["普通人", "很多人", "新手", "大多数", "个人IP", "内容", "职场", "AI", "商业"])
+    question = has_any(text, ["为什么", "怎么", "如何", "？", "?"])
+
+    hp = 2 + int(question) + int(contrast) + int(len(selected_title) <= 34)
+    er = 2 + int(pain) + int(has_any(text, ["普通人", "很多人", "你", "我"])) + int(concrete)
+    sr = 1 + int(broad) + int(has_any(text, ["平台", "流量", "商业", "职场", "AI", "个人IP"])) + int(has_any(text, ["普通人", "新手"]))
+    ql = 2 + int(contrast) + int(has_any(text, ["真相", "入口", "标准", "问题"])) + int(len(selected_title) <= 28)
+    na = 1 + int(concrete) + int(length >= 18) + int(has_any(text, ["先", "再", "最后", "结果"]))
+    ab = 2 + int(broad) + int(has_any(text, ["普通人", "很多人", "新手"])) + int(not has_any(text, ["极小众", "仅限"]))
+    sat = 1 + int(contrast) + int(has_any(text, ["误区", "真相", "你以为", "别"])) + int(question)
+
+    return [
+        dim_result("HP", "钩子强度", hp, "high" if question or contrast else "medium", "标题有问题钩子/反常识入口" if question or contrast else "标题可读但钩子还可加强"),
+        dim_result("ER", "情感共鸣", er, "high" if pain else "medium", "文本里有痛点词，容易代入" if pain else "情绪信号偏弱，需补真实场景"),
+        dim_result("SR", "社会议题", sr, "medium" if broad else "low", "连接到普通人/平台/职业议题" if broad else "暂时偏个人问题，社会托底不足"),
+        dim_result("QL", "金句密度", ql, "medium", "有可压缩成金句的反差判断" if contrast else "观点需要更锋利的一句话"),
+        dim_result("NA", "叙事性", na, "medium" if concrete else "low", "已有场景线索，可展开故事" if concrete else "缺少具体人物或事件线"),
+        dim_result("AB", "受众广度", ab, "high" if broad else "medium", "受众范围较宽，适合口播解释" if broad else "受众需要进一步界定"),
+        dim_result("SAT", "反差讽刺", sat, "medium" if contrast else "low", "存在以为/其实式反差" if contrast else "讽刺和反差还不明显"),
+    ]
+
+
+def composite_score(dimensions: list[dict]) -> tuple[float, int]:
+    weights = {item["key"]: item["weight"] for item in SPARK_RUBRIC}
+    weighted = sum(dimension["score"] * weights.get(dimension["dimension"], 1.0) for dimension in dimensions)
+    max_weighted = sum(item["weight"] * 5 for item in SPARK_RUBRIC)
+    composite = round(weighted / max_weighted * 10, 2)
+    return composite, round(composite * 10)
+
+
+def blind_score_spark(topic: str, selected_title: str = "") -> dict:
+    candidates = generate_title_candidates(topic)
+    chosen_title = selected_title.strip() or candidates[0]
+    if chosen_title not in candidates:
+        candidates = unique_strings([chosen_title, *candidates])[:4]
+    dimensions = score_spark_dimensions(topic, chosen_title)
+    composite, skill_score = composite_score(dimensions)
+    scoring_text = f"{chosen_title}\n{topic}"
+    return {
+        "skill_score": skill_score,
+        "blind_score": skill_score,
+        "score_source": "cheat-score-blind-compatible/local-v0",
+        "score_source_note": "桌面后端按 blind-score JSON 字段写入；真实 sub-agent 接入后可替换 provider。",
+        "rubric_version": "spark-v0",
+        "composite": composite,
+        "score_breakdown": dimensions,
+        "title_candidates": candidates,
+        "selected_title": chosen_title,
+        "scored_at": now_iso(),
+        "script_hash": hashlib.sha256(scoring_text.encode("utf-8")).hexdigest()[:12],
+    }
+
+
+def render_blind_score(topic: str, score_data: dict) -> str:
+    rows = "\n".join(
+        f"| {item['label']} | {item['score']}/5 | {item['confidence']} | {item['reason']} |"
+        for item in score_data.get("score_breakdown", [])
+    )
+    candidates = "\n".join(f"- {candidate}" for candidate in score_data.get("title_candidates", []))
+    return f"""# 火花盲评分
+
+主题：{topic}
+
+选用标题：{score_data.get("selected_title", "")}
+
+综合分：{score_data.get("skill_score", 0)}/100
+
+Composite：{score_data.get("composite", 0)}/10
+
+评分来源：{score_data.get("score_source", "")}
+
+说明：{score_data.get("score_source_note", "")}
+
+候选标题：
+{candidates}
+
+| 维度 | 分数 | 置信度 | 理由 |
+|------|------|--------|------|
+{rows}
+
+下一步建议：进入内容审核，判断风险、人设匹配和是否值得继续写脚本。
+"""
+
+
+def score_spark_item(item: dict, selected_title: str, config: dict) -> tuple[dict, list[dict]]:
+    topic = item.get("content") or item.get("media_url") or "未命名灵感"
+    score_data = blind_score_spark(topic, selected_title)
+    rendered = {"score": render_blind_score(topic, score_data)}
+    artifacts = write_deliverable_artifacts(
+        f"给这个选题评分：{topic}",
+        "blind_score",
+        ["score"],
+        rendered,
+        "",
+        config,
+        source={"inbox_id": item.get("id", ""), "score_source": score_data["score_source"]},
+    )
+    existing_paths = item.get("artifact_paths") if isinstance(item.get("artifact_paths"), list) else []
+    score_data["artifact_paths"] = [*existing_paths, *[entry["path"] for entry in artifacts]]
+    return score_data, artifacts
+
+
 def render_prediction(topic: str) -> str:
     return f"""# 发布预测
 
@@ -696,7 +859,7 @@ def next_step_for(deliverables: list[str], topic: str) -> dict:
     if "review" in present:
         return {"label": "评分", "prompt": f"给这个选题评分：{topic}"}
     if "text_pack" in present:
-        return {"label": "视频脚本", "prompt": f"写视频脚本：{topic}"}
+        return {"label": "静态页文案", "prompt": f"生成静态页文案：{topic}"}
     if "spark_card" in present:
         return {"label": "审核", "prompt": f"审核这个灵感：{topic}"}
     return {"label": "灵感固化", "prompt": f"固化这个灵感：{topic}"}
@@ -834,6 +997,8 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             self.send_json(save_config(payload))
         elif path == "/api/chat":
             config = load_config(include_secret=True)
+            if payload.get("force_local"):
+                config["api_key"] = ""
             message = payload.get("message", "")
             reply = local_agent_reply(message, config)
             self.save_conversation_turn(message, reply)
@@ -864,6 +1029,36 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             item = normalize_inspiration(payload)
             append_jsonl(INBOX_PATH, item)
             self.send_json({"status": "ok", "item": item}, HTTPStatus.CREATED)
+        elif path == "/api/spark/blind-score":
+            config = load_config(include_secret=True)
+            item_id = payload.get("id", "")
+            content = (payload.get("content") or "").strip()
+            selected_title = payload.get("selected_title", "")
+            item = next((entry for entry in read_jsonl(INBOX_PATH) if entry.get("id") == item_id), None)
+            created = False
+            if not item:
+                if not content:
+                    self.send_json({"error": "content is required"}, HTTPStatus.BAD_REQUEST)
+                    return
+                item = normalize_inspiration(
+                    {
+                        "id": item_id or str(uuid.uuid4()),
+                        "type": payload.get("type", "text"),
+                        "content": content,
+                        "media_url": payload.get("media_url", ""),
+                        "tags": payload.get("tags") if isinstance(payload.get("tags"), list) else [],
+                        "sync_status": "pulled",
+                    }
+                )
+                created = True
+            score_updates, artifacts = score_spark_item(item, selected_title, config)
+            if created:
+                item.update(score_updates)
+                append_jsonl(INBOX_PATH, item)
+                updated = item
+            else:
+                updated = update_inbox_item(item["id"], score_updates) or {**item, **score_updates}
+            self.send_json({"status": "ok", "item": updated, "artifacts": artifacts})
         elif path == "/api/inbox/produce":
             item_id = payload.get("id", "")
             instruction = payload.get("instruction", "选题分析")

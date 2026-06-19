@@ -103,6 +103,15 @@ Clean Entry UI Verified
 - [ ] Expand router fidelity for blind scoring, prediction immutability, publish registration, and retro flows.
 - **Status:** pending
 
+### Phase 12: Spark Blind-Score Demo Flow
+- [x] Create rollback tag `before-spark-blind-score-flow`.
+- [x] Let each `待盲评` spark be clickable for blind scoring.
+- [x] Write `skill_score`, `score_breakdown`, and `score_source` back to inbox/local spark state.
+- [x] Sort the spark board by scored items and score.
+- [x] Add a demonstrable flow: spark -> blind score -> review -> video script -> publish copy/static copy.
+- [x] Verify the browser path and commit only workbench/planning files.
+- **Status:** complete
+
 ## Key Questions
 1. Should the mini-program be a full AI workbench? Answer: no, it is only a quick inspiration capture and sync entry.
 2. Should v1 be SaaS-first? Answer: no, v1 is local-first with light cloud for sync and subscription.

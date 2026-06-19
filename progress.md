@@ -271,3 +271,19 @@
 | What's the goal? | Productize the content pipeline into a local-first script workflow agent with mobile inspiration sync. |
 | What have I learned? | See `findings.md`. |
 | What have I done? | Built and verified a local MVP, added Git rollback points, cleaned up the main UI entrances, moved settings behind a gear, added scored spark/material/output boards, and preserved/fixed routing behavior. |
+
+### Phase 12: Spark Blind-Score Demo Flow
+- **Status:** complete
+- Actions taken:
+  - Created rollback tag `before-spark-blind-score-flow` at `30344eb`.
+  - Read `cheat-score` and `cheat-score-blind` skill contracts.
+  - Confirmed `cheat-score-blind` is an internal sub-agent contract, not something to invoke directly from the main conversation.
+  - Added Phase 12 to `task_plan.md`.
+  - Added `/api/spark/blind-score`, which writes `skill_score`, `blind_score`, `score_source`, `score_breakdown`, title candidates, selected title, and score artifacts.
+  - Updated the spark board so `待盲评` is clickable, scored cards show dimensions and candidate titles, and scored sparks sort above pending ones.
+  - Added a one-click demo flow that produces spark solidification, blind score, review, video script, publish copy, and static-page copy.
+  - Forced demo flow chat calls to local fallback so presentations do not hang on external model timeouts.
+- Verification:
+  - `python -m py_compile content-workbench/main.py`
+  - `git diff --check -- content-workbench/main.py content-workbench/static/index.html task_plan.md progress.md`
+  - Playwright verified clickable `待盲评`, score writeback, sorted spark board, five output-board categories, completed demo flow, and no browser console errors.
