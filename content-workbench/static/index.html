@@ -202,7 +202,6 @@
       gap: 14px;
       padding: 14px;
       min-height: 0;
-      transition: grid-template-columns .18s ease;
     }
 
     .workspace.spark-collapsed {
@@ -275,6 +274,14 @@
       letter-spacing: 0;
     }
 
+    .collapse-rail:hover {
+      border-color: #e6c7b8;
+      background: #fff8f4;
+      color: var(--accent);
+      box-shadow: var(--shadow);
+      transform: none;
+    }
+
     .column.collapsed {
       gap: 0;
     }
@@ -316,7 +323,8 @@
     }
 
     .spark-card:hover,
-    .material-card:hover {
+    .material-card:hover,
+    .output-card:hover {
       border-color: #e6c7b8;
       background: #fffdfa;
       transform: translateY(-1px);
@@ -331,9 +339,42 @@
 
     .spark-title,
     .material-title,
-    .chat-material-title {
+    .chat-material-title,
+    .output-title {
       margin-top: 6px;
       line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .output-title {
+      margin-top: 0;
+      font-weight: 760;
+    }
+
+    .output-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 7px;
+    }
+
+    .output-files {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .output-file {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border-top: 1px solid rgba(221, 213, 204, .7);
+      padding-top: 6px;
+      color: #4a3730;
+      font-size: 12px;
       overflow-wrap: anywhere;
     }
 
@@ -872,14 +913,14 @@
 
     function formatReply(reply) {
       const artifacts = (reply.result?.artifacts || []).filter((item) => item.type !== "manifest");
-      const paths = artifacts.map((item) => `- ${item.label}: ${item.path}`).join("\n");
+      const generated = artifacts.map((item) => `- ${item.label}`).join("\n");
       const llmNote = reply.result?.llm_note ? `\n模型：${reply.result.llm_note}` : "";
       const next = reply.result?.next_step?.prompt ? `\n下一步：${reply.result.next_step.label}` : "";
       const stage = STAGE_LABELS[reply.stage] || reply.stage;
-      if (!paths && reply.result?.options) {
+      if (!generated && reply.result?.options) {
         return `${reply.summary}\n\n可继续：${reply.result.options.join("、")}`;
       }
-      return `${reply.summary}${llmNote}${next}\n\n当前阶段：${stage}${paths ? "\n\n产物路径：\n" + paths : ""}`;
+      return `${reply.summary}${llmNote}${next}\n\n当前阶段：${stage}${generated ? "\n\n已生成：\n" + generated : ""}`;
     }
 
     function replyActions(reply) {
@@ -967,9 +1008,18 @@
           { label: "同步地址", content: appConfig.cloud?.base_url || "尚未设置手机同步地址", action: openSettings }
         ];
       } else {
+        const seenFiles = new Set();
         Object.entries(fileGroups).forEach(([group, files]) => {
-          files.slice(0, 12).forEach((file) => {
-            items.push({ label: group, content: file.name || file.path, note: file.path });
+          contentFiles(files).forEach((file) => {
+            const meta = fileMeta(file);
+            const key = `${meta.type}:${meta.name}`;
+            if (seenFiles.has(key) || seenFiles.size >= 12) return;
+            seenFiles.add(key);
+            items.push({
+              label: meta.type,
+              content: `${meta.type}：${meta.name}`,
+              note: groupLabel(group)
+            });
           });
         });
       }
@@ -1050,21 +1100,88 @@
       if (materialTab === "files") renderMaterialList();
     }
 
+    function contentFiles(files) {
+      return (files || []).filter((file) => {
+        const name = (file.name || "").toLowerCase();
+        return name && name !== "manifest.json" && name !== "inbox.jsonl";
+      });
+    }
+
+    function fileMeta(file) {
+      const name = file.name || "未命名文件";
+      const lower = name.toLowerCase();
+      const type = [
+        [/spark|card|idea/, "灵感固化卡"],
+        [/review|audit/, "审核结果"],
+        [/score/, "评分结果"],
+        [/predict/, "预测结果"],
+        [/topic|analysis/, "选题分析"],
+        [/video|script|speaking/, "视频脚本"],
+        [/publish|copy/, "发布文案"],
+        [/static|page/, "静态页文案"],
+        [/storyboard/, "分镜方案"],
+        [/brief/, "选题简报"],
+        [/title|text/, "标题文案"]
+      ].find(([pattern]) => pattern.test(lower))?.[1] || groupLabel(file.group || "");
+      return { name, type, modifiedAt: file.modified_at || "" };
+    }
+
+    function groupLabel(group) {
+      return {
+        deliverables: "生成产物",
+        scripts: "脚本库",
+        predictions: "预测库",
+        archive: "灵感归档"
+      }[group] || "文件";
+    }
+
     function renderOutputBoard() {
       const board = $("outputBoard");
       board.innerHTML = "";
-      const entries = Object.entries(fileGroups);
-      if (!entries.length) {
+      const cards = outputCards();
+      if (!cards.length) {
         board.innerHTML = `<p class="muted">暂无产出。完成一次固化、审核或脚本后会出现在这里。</p>`;
         return;
       }
-      entries.forEach(([group, files]) => {
+      cards.forEach((card) => {
         const node = document.createElement("div");
         node.className = "output-card";
-        const rows = files.slice(0, 4).map((file) => `<div class="path">${escapeHtml(file.path)}</div>`).join("");
-        node.innerHTML = `<strong>${escapeHtml(group)}</strong> <span class="tiny">${files.length} 个文件</span>${rows}`;
+        const rows = card.files.slice(0, 3).map((file) => {
+          const meta = fileMeta(file);
+          return `<div class="output-file"><span>${escapeHtml(meta.name)}</span><span class="tiny">${escapeHtml(meta.modifiedAt.slice(5, 16).replace("T", " "))}</span></div>`;
+        }).join("");
+        node.innerHTML = `
+          <div class="output-meta">
+            <div class="output-title">${escapeHtml(card.type)}</div>
+            <span class="pill">${card.files.length} 个</span>
+          </div>
+          <div class="tiny">${escapeHtml(card.note)}</div>
+          <div class="output-files">${rows}</div>
+        `;
         board.appendChild(node);
       });
+    }
+
+    function outputCards() {
+      const buckets = new Map();
+      Object.entries(fileGroups).forEach(([group, files]) => {
+        contentFiles(files).forEach((file) => {
+          const enriched = { ...file, group };
+          const meta = fileMeta(enriched);
+          if (!buckets.has(meta.type)) buckets.set(meta.type, []);
+          buckets.get(meta.type).push(enriched);
+        });
+      });
+      return Array.from(buckets.entries()).map(([type, files]) => ({
+        type,
+        files: files.sort((a, b) => String(b.modified_at || "").localeCompare(String(a.modified_at || ""))),
+        note: type === "灵感归档" ? "从手机或本地收进来的原始灵感" : "可继续放入对话生成下一步"
+      })).sort((a, b) => outputRank(a.type) - outputRank(b.type));
+    }
+
+    function outputRank(type) {
+      const index = ["灵感固化卡", "审核结果", "评分结果", "预测结果", "选题分析", "视频脚本", "发布文案", "静态页文案", "分镜方案", "选题简报", "标题文案", "灵感归档"].indexOf(type);
+      return index === -1 ? 99 : index;
     }
 
     async function pullCloud() {
