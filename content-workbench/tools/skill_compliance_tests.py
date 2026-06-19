@@ -56,7 +56,7 @@ def run() -> dict:
             ("推荐选题", "topic_recommendation", "topic-recommendation.md"),
             ("学这个账号：个人IP对标账号", "benchmark_analysis", "benchmark-analysis.md"),
             ("更新受众画像：根据最近评论", "persona_report", "persona-report.md"),
-            ("升级 rubric：检查权重", "rubric_bump", "rubric-bump.md"),
+            ("升级评分规则：检查权重", "rubric_bump", "score-rules-bump.md"),
             ("我想做一条普通人做内容前如何判断入口", "seed_draft", "seed-draft.md"),
             ("抖音审稿：保证你一定月入十万，加我微信", "douyin_review", "douyin-review.md"),
             ("优化开头：普通人做个人IP为什么半途而废", "hook_review", "hook-review.md"),
@@ -116,8 +116,11 @@ def run() -> dict:
 
         audit_path = APP_ROOT / "docs" / "skill-coverage-audit.md"
         audit_text = audit_path.read_text(encoding="utf-8")
-        covered = [line for line in audit_text.splitlines() if line.startswith("| `")]
-        results.append(expect(len(covered) >= 19, "coverage-audit:all-child-skills-listed", f"covered_rows={len(covered)}"))
+        covered = [
+            line for line in audit_text.splitlines()
+            if line.startswith("| ") and "已覆盖" in line and "`" in line
+        ]
+        results.append(expect(len(covered) >= 19, "coverage-audit:all-capabilities-listed", f"covered_rows={len(covered)}"))
 
         failed = [item for item in results if not item["pass"]]
         return {

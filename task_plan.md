@@ -4,7 +4,7 @@
 Turn the existing Content Creator Pipeline skill bundle into a beginner-friendly local script workflow assistant for inspiration capture, spark solidification, review, scoring, prediction, video-script writing, and text/static-page material generation.
 
 ## Current Phase
-Skill Compliance Harness Complete
+Mosmori Brand Cleanup Complete
 
 ## Phases
 
@@ -184,6 +184,15 @@ Skill Compliance Harness Complete
 - [x] Add golden/red-team checks for Douyin review, humanizer, blind-score contamination, prediction immutability, and coverage documentation.
 - [x] Run the harness, use failures to fix implementation, and rerun to green.
 - [x] Verify syntax, diff hygiene, and unchanged mini-program dirty files.
+- **Status:** complete
+
+### Phase 21: Mosmori Brand Cleanup
+- [x] Create rollback tag `before-mosmori-brand-cleanup`.
+- [x] Replace customer-visible internal terminology with `别墨叽` and `Mosmori / 墨始智能` wording.
+- [x] Clean README and capability audit docs so they do not expose source skill names.
+- [x] Keep internal route ids and field names stable unless tests require a small adjustment.
+- [x] Update the compliance harness for the branded audit format.
+- [x] Verify syntax, compliance harness, diff hygiene, and unchanged mini-program dirty files.
 - **Status:** complete
 
 ## Key Questions

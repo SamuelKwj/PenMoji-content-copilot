@@ -56,6 +56,7 @@
 | Use prompt-limited model blind scoring before full sub-agent integration | The product can send only title/body/rubric to an OpenAI-compatible model now, while future Codex Task sub-agent isolation remains the stricter version. |
 | Expose every packaged child skill as a workbench route | Prevents bundled skills from becoming dead documentation and keeps product behavior aligned with the integrated pipeline. |
 | Add executable compliance tests for skill contracts | Skills are prompt/procedure contracts, so golden and red-team tests are needed to prove the product follows them. |
+| Brand customer-facing surfaces as `别墨叽` by Mosmori / 墨始智能 | Public UI, README, generated artifacts, and capability docs should describe product abilities, not internal prompt packs or source skill names. |
 
 ## Issues Encountered
 | Issue | Resolution |
@@ -80,6 +81,7 @@
 | Local spark scoring did not use a model even when configured | Added a prompt blind-score runner with strict JSON parsing and local fallback. |
 | The packaged `douyin-content-review` skill was missed in the product flow | Added `抖音审稿` route and artifact generation, including limit/violation risk checks and playback diagnosis prompts. |
 | Local blind-score fallback did not flag contaminated inputs | Compliance harness caught this; blind-score self-check now detects playback/comment/retro signals in both model and fallback paths. |
+| Branded capability audit initially failed the harness row count | Two capability rows lacked backticked entry labels; formatting them consistently restored the 27/27 harness pass. |
 
 ## Resources
 - Existing pipeline root: `C:\Users\samue\Documents\内容生产agent\Content Creator Pipeline`

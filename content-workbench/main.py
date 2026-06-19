@@ -51,7 +51,7 @@ DELIVERABLE_LABELS = {
     "trend_candidates": "热点候选",
     "topic_recommendation": "选题推荐",
     "persona_report": "受众画像",
-    "rubric_bump": "Rubric升级建议",
+    "rubric_bump": "评分规则升级建议",
     "benchmark_analysis": "对标分析",
     "migration_report": "迁移检查",
     "promotion_plan": "投流决策",
@@ -341,7 +341,7 @@ def route_deliverables(message: str) -> tuple[str, list[str]]:
         (r"^(推荐选题|下一篇做什么|next topic|挑一个选题)", "skill_recommend", ["topic_recommendation"]),
         (r"^(学这个账号|找对标|导入对标|拆这几个对标|learn from)", "skill_learn_from", ["benchmark_analysis"]),
         (r"^(更新受众画像|构造受众画像|我的观众是谁|刷新受众画像|persona)", "skill_persona", ["persona_report"]),
-        (r"^(升级 rubric|更新公式|调整权重|重校桶|bump rubric)", "skill_bump", ["rubric_bump"]),
+        (r"^(升级评分规则|升级 rubric|更新公式|调整权重|重校桶|bump rubric)", "skill_bump", ["rubric_bump"]),
         (r"^(拍了|已拍|录完了|shot)", "skill_shoot", ["shoot_record"]),
         (r"^(抖音审稿|检查限流|限流审稿|防违规|合规审核)", "skill_douyin_review", ["douyin_review"]),
         (r"^(优化开头|开头怎么写|hook|前3秒|前三秒)", "skill_hook", ["hook_review"]),
@@ -401,7 +401,7 @@ def build_llm_prompt(message: str, deliverables: list[str], config: dict) -> str
     creator = config.get("creator", {})
     labels = "、".join(DELIVERABLE_LABELS[key] for key in deliverables) if deliverables else "交付物选择"
     return (
-        "你是一个给内容创作新手使用的本地 Agent。请按流程逐步引导："
+        "你是墨始智能 Mosmori 出品的「别墨叽」内容工作台。请按流程逐步引导："
         "灵感固化 -> 审核 -> 评分 -> 预测 -> 视频脚本 -> 文字/静态页物料。"
         "不要直接产出视频，不要一上来全套生产；核心产物是视频脚本和文字/静态页材料。"
         "输出要能直接给创作者使用，中文，清晰，避免空泛。\n\n"
@@ -415,7 +415,7 @@ def build_llm_prompt(message: str, deliverables: list[str], config: dict) -> str
 
 def call_openai_compatible(prompt: str, config: dict) -> tuple[str, str]:
     messages = [
-        {"role": "system", "content": "你是新手创作者的脚本工作流助手，返回可直接落盘的中文内容。"},
+        {"role": "system", "content": "你是「别墨叽」内容工作台，返回可直接落盘的中文内容。"},
         {"role": "user", "content": prompt},
     ]
     return call_openai_chat(messages, config, temperature=0.7, timeout=60)
@@ -424,11 +424,11 @@ def call_openai_compatible(prompt: str, config: dict) -> tuple[str, str]:
 def call_openai_chat(messages: list[dict], config: dict, temperature: float = 0.7, timeout: int = 60) -> tuple[str, str]:
     api_key = config.get("api_key", "")
     if not api_key:
-        return "", "未配置 API Key，使用本地 deterministic fallback。"
+        return "", "未配置 API Key，使用墨始本地生成。"
     base_url = (config.get("api_base_url") or "").rstrip("/")
     model = config.get("model") or "gpt-4.1-mini"
     if not base_url:
-        return "", "未配置 API Base URL，使用本地 deterministic fallback。"
+        return "", "未配置 API Base URL，使用墨始本地生成。"
 
     payload = {
         "model": model,
@@ -447,7 +447,7 @@ def call_openai_chat(messages: list[dict], config: dict, temperature: float = 0.
         content = data["choices"][0]["message"]["content"]
         return content.strip(), "LLM 调用成功。"
     except (urllib.error.URLError, KeyError, json.JSONDecodeError, TimeoutError) as exc:
-        return "", f"LLM 调用失败，使用本地 fallback：{exc}"
+        return "", f"模型调用失败，使用墨始本地生成：{exc}"
 
 
 def test_openai_compatible(config: dict) -> dict:
@@ -598,10 +598,10 @@ def render_init_state(topic: str, config: dict) -> str:
 
 已具备：
 - 火花收录与看板
-- 最小输入 blind-score
+- 墨始最小输入评分
 - 发布预测锁定
 - 发布登记与复盘
-- 本地云 mock 同步
+- 本地同步验证
 
 建议补充：
 1. 你做什么类型的内容？
@@ -625,13 +625,13 @@ def render_migration_report(topic: str, config: dict) -> str:
 - deliverables/：产物与 manifest
 
 检查结果：
-- 当前版本使用工作台内置 schema，无需执行旧 cheat state 迁移。
-- 如果后续导入 `.cheat-state.json`，需要先备份，再做字段映射。
+- 当前版本使用别墨叽内置数据结构，无需执行旧版状态迁移。
+- 如果后续导入旧项目状态文件，需要先备份，再做字段映射。
 
 建议：
 1. 保留原始历史文件。
 2. 先导入候选池和历史发布数据。
-3. 再生成 audience/rubric 派生文件。
+3. 再生成受众画像与评分规则派生文件。
 """
 
 
@@ -653,16 +653,16 @@ def render_status_report(topic: str, config: dict) -> str:
 
 已复盘：{len(completed_retro)}
 
-当前模式：本地 MVP / BYOK / 云 mock 可验证
+当前模式：别墨叽本地版 / BYOK / 同步链路可验证
 
 风险：
 - 真正云端、正式授权、安装包仍未生产化。
-- prompt blind-score 已可用，但 Codex Task sub-agent 隔离仍是更严格版本。
+- 墨始最小输入评分已可用；正式云端评分服务后续可进一步增强隔离性和稳定性。
 
 建议下一步：
 1. 若火花少，先抓热点或导入对标。
 2. 若已发布但未复盘，优先补复盘。
-3. 若复盘样本 ≥5，再考虑 rubric 升级。
+3. 若复盘样本 ≥5，再考虑评分规则升级。
 """
 
 
@@ -687,7 +687,7 @@ def render_seed_draft(topic: str, config: dict) -> str:
 录制提示：
 - 用自己的经历替换示例。
 - 不要直接照拍这份 draft。
-- 先进入 blind-score，再决定是否写完整脚本。
+- 先进入墨始评分，再决定是否写完整脚本。
 """
 
 
@@ -828,7 +828,7 @@ def render_trend_candidates(topic: str) -> str:
 3. 个人 IP 半途而废，往往不是执行力问题
 4. 新手做内容，先别学爆款公式
 
-下一步：选择一条进入 blind-score 排名。
+下一步：选择一条进入墨始评分排名。
 """
 
 
@@ -849,7 +849,7 @@ def render_topic_recommendation(topic: str) -> str:
 {rows}
 
 推荐逻辑：
-- 优先已 blind-score 的火花。
+- 优先已完成墨始评分的火花。
 - 分数相近时，优先具体、有痛点、有个人场景的选题。
 - 候选池为空时，先抓热点或提交 3 条火花。
 """
@@ -872,7 +872,7 @@ def render_persona_report(topic: str) -> str:
 2. 可自测的问题。
 3. 普通人的真实失败/卡住场景。
 
-注意：受众画像含复盘信号，不能进入 blind-score 输入。
+注意：受众画像含复盘信号，不能进入发布前评分输入。
 """
 
 
@@ -880,7 +880,7 @@ def render_rubric_bump(topic: str) -> str:
     runs = read_workflow_runs()
     retros = [run for run in runs if run.get("status") == "retrospected"]
     ready = len(retros) >= 5
-    return f"""# Rubric 升级建议
+    return f"""# 评分规则升级建议
 
 复盘样本数：{len(retros)}
 
@@ -888,7 +888,7 @@ def render_rubric_bump(topic: str) -> str:
 
 当前建议：
 - 样本 < 5：只记录观察，不改权重。
-- 样本 ≥ 5：对照 blind-score 与真实数据，检查哪些维度高估/低估。
+- 样本 ≥ 5：对照发布前评分与真实数据，检查哪些维度高估/低估。
 - 升级时必须保留旧版本，避免回看污染。
 
 候选调整：
@@ -975,7 +975,7 @@ def render_score(topic: str) -> str:
 
 主题：{topic}
 
-> MVP 评分用于选题初筛，不等同于完整盲打分系统。
+> 当前本地评分用于选题初筛，不等同于完整发布预测系统。
 
 | 维度 | 分数 | 理由 |
 |------|------|------|
@@ -1095,11 +1095,11 @@ def composite_score(dimensions: list[dict]) -> tuple[float, int]:
 def blind_score_system_prompt() -> str:
     rubric_lines = "\n".join(f"- {item['key']} {item['label']}: 0-5 整数分" for item in SPARK_RUBRIC)
     return (
-        "你是一个隔离的内容盲评评分器。你只能根据本次消息里的标题候选、火花/大纲/正文、rubric 维度打分。"
+        "你是一个隔离的内容评分器。你只能根据本次消息里的标题候选、火花/大纲/正文、评分维度打分。"
         "不要参考任何用户历史、播放量、点赞、评论、复盘、预测、账号状态或外部事实。"
         "如果文本里出现发布后数据或复盘信息，必须在 self_check 标记 contamination。"
         "输出必须是严格 JSON，根节点必须是对象，不要 markdown，不要解释。\n\n"
-        "Rubric 维度：\n"
+        "评分维度：\n"
         f"{rubric_lines}\n\n"
         "JSON schema:\n"
         "{\n"
@@ -1184,7 +1184,7 @@ def prompt_blind_score_spark(topic: str, selected_title: str, candidates: list[s
         parsed = extract_json_object(content)
         dimensions = normalize_blind_dimensions(parsed.get("dimensions"))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
-        return None, f"模型盲评 JSON 解析失败，使用本地 fallback：{exc}"
+        return None, f"模型评分结果解析失败，使用墨始本地评分：{exc}"
 
     composite, skill_score = composite_score(dimensions)
     scoring_text = f"{selected_title}\n{topic}"
@@ -1192,7 +1192,7 @@ def prompt_blind_score_spark(topic: str, selected_title: str, candidates: list[s
     local_self_check = blind_input_self_check(scoring_text)
     self_check = {**self_check, **{key: bool(self_check.get(key) or value) for key, value in local_self_check.items()}}
     source_note = (
-        "模型盲评：仅提交标题候选、火花/大纲/正文和 rubric 维度；"
+        "墨始模型评分：仅提交标题候选、火花/大纲/正文和评分维度；"
         "不提交历史预测、复盘、播放数据或用户状态。"
     )
     if self_check.get("any_contamination_signal"):
@@ -1201,7 +1201,8 @@ def prompt_blind_score_spark(topic: str, selected_title: str, candidates: list[s
         {
             "skill_score": skill_score,
             "blind_score": skill_score,
-            "score_source": "cheat-score-blind-prompt/openai-compatible-v0",
+            "score_source": "mosmori-model-score-v0",
+            "score_source_label": "墨始模型评分",
             "score_source_note": source_note,
             "rubric_version": parsed.get("rubric_version") or "spark-v0",
             "composite": composite,
@@ -1210,13 +1211,24 @@ def prompt_blind_score_spark(topic: str, selected_title: str, candidates: list[s
             "selected_title": str(parsed.get("selected_title") or selected_title).strip() or selected_title,
             "scored_at": now_iso(),
             "script_hash": hashlib.sha256(scoring_text.encode("utf-8")).hexdigest()[:12],
-            "blind_input_policy": "minimal-title-content-rubric-only",
+            "blind_input_policy": "minimal-title-content-score-rules-only",
             "input_status": parsed.get("input_status") if isinstance(parsed.get("input_status"), dict) else {"minimal_input_only": True},
             "self_check": self_check,
             "refusal": parsed.get("refusal"),
         },
         note,
     )
+
+
+def branded_score_source_label(source: str) -> str:
+    raw = str(source or "").lower()
+    if "model" in raw:
+        return "墨始模型评分"
+    if "isolated" in raw:
+        return "墨始隔离评分"
+    if "local" in raw:
+        return "墨始本地评分"
+    return "墨始评分"
 
 
 def local_blind_score_spark(topic: str, selected_title: str = "", fallback_note: str = "") -> dict:
@@ -1228,13 +1240,14 @@ def local_blind_score_spark(topic: str, selected_title: str = "", fallback_note:
     composite, skill_score = composite_score(dimensions)
     scoring_text = f"{chosen_title}\n{topic}"
     self_check = blind_input_self_check(scoring_text)
-    source_note = fallback_note or "未配置可用模型，使用本地兼容评分；字段结构与 blind-score 对齐。"
+    source_note = fallback_note or "未配置可用模型，使用墨始本地评分；评分结构与工作台看板对齐。"
     if self_check["any_contamination_signal"]:
         source_note += " 输入中出现疑似播放/评论/复盘信号，本次分数需按污染输入看待。"
     return {
         "skill_score": skill_score,
         "blind_score": skill_score,
-        "score_source": "cheat-score-blind-compatible/local-v0",
+        "score_source": "mosmori-local-score-v0",
+        "score_source_label": "墨始本地评分",
         "score_source_note": source_note,
         "rubric_version": "spark-v0",
         "composite": composite,
@@ -1243,7 +1256,7 @@ def local_blind_score_spark(topic: str, selected_title: str = "", fallback_note:
         "selected_title": chosen_title,
         "scored_at": now_iso(),
         "script_hash": hashlib.sha256(scoring_text.encode("utf-8")).hexdigest()[:12],
-        "blind_input_policy": "local-compatible-title-content-rubric",
+        "blind_input_policy": "local-title-content-score-rules",
         "input_status": {"minimal_input_only": True, "local_fallback": True},
         "self_check": self_check,
     }
@@ -1260,7 +1273,7 @@ def blind_score_spark(topic: str, selected_title: str = "", config: dict | None 
             return score_data
         fallback_note = note
     else:
-        fallback_note = "演示模式或本地模式使用 deterministic fallback。"
+        fallback_note = "演示模式或本地模式使用墨始本地评分。"
     return local_blind_score_spark(topic, chosen_title, fallback_note)
 
 
@@ -1270,7 +1283,7 @@ def render_blind_score(topic: str, score_data: dict) -> str:
         for item in score_data.get("score_breakdown", [])
     )
     candidates = "\n".join(f"- {candidate}" for candidate in score_data.get("title_candidates", []))
-    return f"""# 火花盲评分
+    return f"""# 火花评分
 
 主题：{topic}
 
@@ -1280,7 +1293,7 @@ def render_blind_score(topic: str, score_data: dict) -> str:
 
 Composite：{score_data.get("composite", 0)}/10
 
-评分来源：{score_data.get("score_source", "")}
+评分来源：{branded_score_source_label(score_data.get("score_source", ""))}
 
 说明：{score_data.get("score_source_note", "")}
 
@@ -1551,7 +1564,7 @@ def write_deliverable_artifacts(
         "trend_candidates": "trend-candidates.md",
         "topic_recommendation": "topic-recommendation.md",
         "persona_report": "persona-report.md",
-        "rubric_bump": "rubric-bump.md",
+        "rubric_bump": "score-rules-bump.md",
         "benchmark_analysis": "benchmark-analysis.md",
         "migration_report": "migration-report.md",
         "promotion_plan": "promotion-plan.md",
@@ -1827,7 +1840,7 @@ def generate_retro(payload: dict, config: dict) -> dict:
 def next_step_for(deliverables: list[str], topic: str) -> dict:
     present = set(deliverables)
     if "static_page" in present:
-        return {"label": "完成", "prompt": "这个选题的 MVP 文字流程已完成，可以人工修改脚本后进入拍摄。"}
+        return {"label": "完成", "prompt": "这个选题的文字流程已完成，可以人工修改脚本后进入拍摄。"}
     if "douyin_review" in present:
         return {"label": "视频脚本", "prompt": f"写视频脚本：{topic}"}
     if "hook_review" in present:
@@ -1845,7 +1858,7 @@ def next_step_for(deliverables: list[str], topic: str) -> dict:
     if "spark_card" in present:
         return {"label": "审核", "prompt": f"审核这个灵感：{topic}"}
     if "seed_draft" in present:
-        return {"label": "盲评分", "prompt": f"给这个选题评分：{topic}"}
+        return {"label": "评分", "prompt": f"给这个选题评分：{topic}"}
     return {"label": "灵感固化", "prompt": f"固化这个灵感：{topic}"}
 
 
@@ -2035,7 +2048,7 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             item = normalize_inspiration(payload)
             append_jsonl(INBOX_PATH, item)
             self.send_json({"status": "ok", "item": item}, HTTPStatus.CREATED)
-        elif path == "/api/spark/blind-score":
+        elif path in {"/api/spark/score", "/api/spark/blind-score"}:
             config = load_config(include_secret=True)
             item_id = payload.get("id", "")
             content = (payload.get("content") or "").strip()

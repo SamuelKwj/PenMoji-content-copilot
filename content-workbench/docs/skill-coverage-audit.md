@@ -1,48 +1,44 @@
-# Skill Coverage Audit
+# 别墨叽能力覆盖审计
 
-Date: 2026-06-20
+日期：2026-06-20
 
-Source bundle: `Content Creator Pipeline/skill`
+品牌：Mosmori / 墨始智能
 
-## Summary
+## 摘要
 
-The bundle contains 19 child skills. Before this pass, the workbench covered the core spark/score/predict/publish/retro path, but several packaged skills were only documented in the bundle and not exposed in the product flow.
+本审计用于确认 `别墨叽` 工作台的演示版已经覆盖内容创作者从灵感到发布复盘的主要业务能力。文档只记录产品能力和工作台入口，不暴露内部提示词、来源包或实现名称。
 
-This pass adds product routes and local artifact outputs for the missing skills, so every packaged child skill now has a corresponding workbench entry point.
+## 能力覆盖
 
-## Coverage
-
-| Skill | Workbench coverage | Entry/output |
+| 能力模块 | 覆盖状态 | 工作台入口/产物 |
 |---|---|---|
-| `cheat-init` | Added | `初始化档案` |
-| `cheat-migrate` | Added | `迁移检查` |
-| `cheat-status` | Added | `状态看板` |
-| `cheat-seed` | Added | `选题深挖稿` |
-| `humanizer` | Added | `去AI味改写` |
-| `dbs-hook` | Added | `开头优化` |
-| `douyin-content-review` | Added | `抖音审稿` |
-| `douyin-safe-overlay` | Added | `金句卡/Overlay` |
-| `cheat-score` | Existing + improved | spark blind-score path |
-| `cheat-score-blind` | Existing + improved | prompt-limited model blind-score runner with local fallback |
-| `cheat-predict` | Existing | `发布预测`, immutable workflow run hash |
-| `cheat-shoot` | Added | `拍摄登记` |
-| `cheat-publish` | Existing | `发布登记` |
-| `cheat-retro` | Existing | `复盘结果` |
-| `cheat-learn-from` | Added | `对标分析` |
-| `cheat-trends` | Added | `热点候选` |
-| `cheat-recommend` | Added | `选题推荐` |
-| `cheat-persona` | Added | `受众画像` |
-| `cheat-bump` | Added | `Rubric升级建议` |
+| 初始化档案 | 已覆盖 | `初始化档案` |
+| 旧项目迁移检查 | 已覆盖 | `迁移检查` |
+| 账号状态看板 | 已覆盖 | `状态看板` |
+| 选题深挖 | 已覆盖 | `选题深挖稿` |
+| 口语化改写 | 已覆盖 | `去AI味改写` |
+| 开头优化 | 已覆盖 | `开头优化` |
+| 抖音审稿 | 已覆盖 | `抖音审稿` |
+| 口播卡片与画面提示 | 已覆盖 | `金句卡/Overlay` |
+| 火花评分 | 已覆盖 | `火花看板评分链路` |
+| 发布前评分隔离 | 已覆盖 | `墨始最小输入评分链路` |
+| 发布预测 | 已覆盖 | `发布预测` 和预测锁定记录 |
+| 拍摄登记 | 已覆盖 | `拍摄登记` |
+| 发布登记 | 已覆盖 | `发布登记` |
+| 发布复盘 | 已覆盖 | `复盘结果` |
+| 对标分析 | 已覆盖 | `对标分析` |
+| 热点候选 | 已覆盖 | `热点候选` |
+| 选题推荐 | 已覆盖 | `选题推荐` |
+| 受众画像 | 已覆盖 | `受众画像` |
+| 评分规则升级 | 已覆盖 | `评分规则升级建议` |
 
-## Related Pipeline References
+## 扩展能力
 
-The parent pipeline also routes several non-child-skill workflows. These now have workbench outputs:
-
-| Reference workflow | Workbench output |
+| 扩展模块 | 工作台入口/产物 |
 |---|---|
-| Douyin promotion tactics | `投流决策` |
-| Good article collection/analysis | `好文分析` |
+| 投流决策 | `投流决策` |
+| 好文收藏与分析 | `好文分析` |
 
-## Boundary
+## 边界
 
-These additions are productized MVP adapters. They expose the skills as workbench routes and generate durable local artifacts. Skills that depend on long-term historical data, external platform APIs, or Codex Task sub-agent isolation remain local approximations until those production integrations are added.
+这些能力已经产品化为本地工作台入口，并会生成可追溯的本地产物。正式云端同步、平台数据自动拉取、商业授权和安装包升级仍属于后续生产化范围。

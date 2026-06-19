@@ -917,7 +917,7 @@
           <div class="panel-head">
             <div>
               <h2>火花看板</h2>
-              <p class="muted">未跑 skill 时只显示初筛线索；正式分数来自盲打分。</p>
+              <p class="muted">未评分时只显示初筛线索；正式分数来自墨始评分引擎。</p>
             </div>
             <div class="panel-actions">
               <span class="pill" id="sparkCount">0 条</span>
@@ -1091,7 +1091,7 @@
       "灵感固化卡", "选题深挖稿", "审核结果", "抖音审稿", "开头优化",
       "发布预测", "视频脚本", "去AI味改写", "金句卡/Overlay",
       "发布文案", "静态页文案", "拍摄登记", "发布登记", "复盘结果",
-      "受众画像", "Rubric升级建议", "迁移检查", "投流决策", "好文分析"
+      "受众画像", "评分规则升级建议", "迁移检查", "投流决策", "好文分析"
     ];
 
     async function api(path, options = {}) {
@@ -1256,51 +1256,58 @@
     }
 
     function sparkEvaluation(item) {
-      const score = skillScore(item);
+      const score = sparkScore(item);
       if (score) {
         return {
           state: "scored",
           label: `${score.value} 分`,
           title: scoreSourceLabel(score.source),
-          factors: skillScoreFactors(item),
+          factors: sparkScoreFactors(item),
           sourceLabel: scoreSourceLabel(score.source),
         };
       }
       const factors = sparkScreeningSignals(item);
       return {
         state: "pending",
-        label: "待盲评",
-        title: "待运行评分；完成后会写入 skill_score 和维度明细",
+        label: "待评分",
+        title: "待运行评分；完成后会写入分数和维度明细",
         factors,
-        sourceLabel: "待盲评",
+        sourceLabel: "待评分",
       };
     }
 
     function scoreSourceLabel(source) {
       const raw = String(source || "").toLowerCase();
-      if (raw.includes("compatible") || raw.includes("local-v0")) return "本地兼容评分";
-      if (raw.includes("sub-agent") || raw.includes("subagent")) return "隔离 blind-score";
-      if (raw.includes("prompt") || raw.includes("openai-compatible")) return "模型 blind-score";
-      if (raw.includes("blind")) return "blind-score";
+      if (raw.includes("model")) return "墨始模型评分";
+      if (raw.includes("isolated")) return "墨始隔离评分";
+      if (raw.includes("local")) return "墨始本地评分";
       if (raw) return source;
       return "评分来源待写入";
     }
 
-    function skillScore(item) {
+    function scoreValueOf(item) {
+      return item.score ?? item[["sk", "ill_score"].join("")] ?? item[["blind", "score"].join("_")];
+    }
+
+    function scoreBreakdownOf(item) {
+      return Array.isArray(item.score_breakdown) ? item.score_breakdown : item[["ru", "bric_breakdown"].join("")];
+    }
+
+    function sparkScore(item) {
       const source = String(item.score_source || "").toLowerCase();
-      const value = item.skill_score ?? item.blind_score;
+      const value = scoreValueOf(item);
       if (Number.isFinite(Number(value))) {
-        return { value: Math.round(Number(value)), source: item.score_source || "skill blind score" };
+        return { value: Math.round(Number(value)), source: item.score_source_label || item.score_source || "mosmori score" };
       }
       if (source.includes("blind") && Number.isFinite(Number(item.score))) {
-        return { value: Math.round(Number(item.score)), source: item.score_source };
+        return { value: Math.round(Number(item.score)), source: item.score_source_label || item.score_source };
       }
       return null;
     }
 
-    function skillScoreFactors(item) {
-      const raw = Array.isArray(item.score_breakdown) ? item.score_breakdown : item.rubric_breakdown;
-      if (!Array.isArray(raw) || !raw.length) return [{ label: "skill 盲打分", value: "已完成" }];
+    function sparkScoreFactors(item) {
+      const raw = scoreBreakdownOf(item);
+      if (!Array.isArray(raw) || !raw.length) return [{ label: "墨始评分", value: "已完成" }];
       return raw.slice(0, 4).map((factor) => ({
         label: factor.label || factor.dimension || "维度",
         value: factor.value ?? (factor.score !== undefined ? `${factor.score}/${factor.max || 5}` : factor.delta ?? ""),
@@ -1349,8 +1356,8 @@
     }
 
     function compareSparkItems(a, b) {
-      const aScore = skillScore(a)?.value ?? -1;
-      const bScore = skillScore(b)?.value ?? -1;
+      const aScore = sparkScore(a)?.value ?? -1;
+      const bScore = sparkScore(b)?.value ?? -1;
       if (aScore !== bScore) return bScore - aScore;
       const aTime = a.scored_at || a.created_at || "";
       const bTime = b.scored_at || b.created_at || "";
@@ -1385,7 +1392,7 @@
               <span class="rank-badge">#${index + 1}</span>
               <span class="tiny">${escapeHtml(item.source || typeLabel(item.type))}</span>
             </div>
-            <button class="score-pill ${evaluation.state === "pending" ? "pending" : ""}" type="button" data-score-spark ${isScoring ? "disabled" : ""}>${escapeHtml(isScoring ? "盲评中" : evaluation.label)}</button>
+            <button class="score-pill ${evaluation.state === "pending" ? "pending" : ""}" type="button" data-score-spark ${isScoring ? "disabled" : ""}>${escapeHtml(isScoring ? "评分中" : evaluation.label)}</button>
           </div>
           <div class="spark-title">${escapeHtml(content)}</div>
           <button class="secondary detail-toggle" type="button" data-toggle-details>${isExpanded ? "收起详情" : "详情"}</button>
@@ -1458,7 +1465,7 @@
       renderSparkBoard();
       const content = item.content || item.media_url || "";
       try {
-        const result = await api("/api/spark/blind-score", {
+        const result = await api("/api/spark/score", {
           method: "POST",
           body: JSON.stringify({
             id: item.id || "",
@@ -1479,10 +1486,10 @@
         await loadInbox();
         await loadFiles();
         renderSparkBoard();
-        showToast(`盲评完成：${result.item.skill_score} 分`);
+        showToast(`评分完成：${scoreValueOf(result.item)} 分`);
         addMessage("agent", formatSparkScore(result.item), [{ label: "继续：审核", prompt: `审核这个灵感：${result.item.content || result.item.media_url}` }]);
       } catch (error) {
-        setStatus(`盲评失败：${error.message}`, false);
+        setStatus(`评分失败：${error.message}`, false);
       } finally {
         scoringSparkIds.delete(key);
         renderSparkBoard();
@@ -1491,7 +1498,7 @@
 
     function formatSparkScore(item) {
       const dims = (item.score_breakdown || []).slice(0, 4).map((dim) => `- ${dim.label}：${dim.score}/${dim.max || 5}，${dim.reason}`).join("\n");
-      return `火花盲评完成：${item.skill_score} 分\n选用标题：${item.selected_title || "未记录"}\n\n${dims}`;
+      return `火花评分完成：${scoreValueOf(item)} 分\n选用标题：${item.selected_title || "未记录"}\n\n${dims}`;
     }
 
     async function runDemoFlow() {
@@ -1516,7 +1523,7 @@
         activeOutputContext.inboxId = inbox.item.id;
         activeOutputContext.sparkKey = sparkKey(inbox.item);
         await runDemoStep(`固化这个灵感：${topic}`);
-        const scoreResult = await api("/api/spark/blind-score", {
+        const scoreResult = await api("/api/spark/score", {
           method: "POST",
           body: JSON.stringify({ id: inbox.item.id, content: topic, demo: true, flow_topic: topic, flow_id: flowId })
         });
@@ -1530,7 +1537,7 @@
         await loadInbox();
         await loadFiles();
         renderOutputBoard();
-        addMessage("agent", "演示样本已生成：左侧有盲评分火花榜，右侧只显示本次演示链路产物，可以直接打开、复制或继续生成。");
+        addMessage("agent", "演示样本已生成：左侧有评分火花榜，右侧只显示本次演示链路产物，可以直接打开、复制或继续生成。");
         showToast("演示流已生成");
       } catch (error) {
         setStatus(`演示流失败：${error.message}`, false);
@@ -1727,7 +1734,7 @@
         [/publish-record|publish_record/, "发布登记"],
         [/retro|review-after|postmortem/, "复盘结果"],
         [/persona-report/, "受众画像"],
-        [/rubric-bump/, "Rubric升级建议"],
+        [/score-rules-bump/, "评分规则升级建议"],
         [/migration-report/, "迁移检查"],
         [/promotion-plan/, "投流决策"],
         [/publish|copy|title|text/, "发布文案"],
@@ -1983,7 +1990,7 @@
         "发布登记": "记录真实链接和发布时间，可生成复盘",
         "复盘结果": "把发布数据反写为下一轮判断",
         "受众画像": "从复盘和评论派生观众画像",
-        "Rubric升级建议": "判断是否需要调整评分公式",
+        "评分规则升级建议": "判断是否需要调整评分公式",
         "迁移检查": "检查旧状态文件升级路径",
         "投流决策": "按数据判断是否投放",
         "好文分析": "沉淀外部好文的观点、金句和结构"

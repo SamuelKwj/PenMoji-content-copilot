@@ -406,3 +406,25 @@
   - Final harness run: 27/27 passed.
   - `python -m py_compile content-workbench\main.py content-workbench\cloud_mock.py content-workbench\tools\skill_compliance_tests.py` passed.
   - `mobile-miniapp/project.config.json` and `mobile-miniapp/project.private.config.json` were not modified by this phase.
+
+### Phase 21: Mosmori Brand Cleanup
+- **Status:** complete
+- Actions taken:
+  - Confirmed working tree was clean on branch `end` before brand cleanup.
+  - Confirmed rollback tag `before-mosmori-brand-cleanup` exists for this cleanup pass.
+  - Scanned customer-visible workbench files for `skill`, `cheat`, `blind-score`, `rubric`, `MVP`, `fallback`, `sub-agent`, and source-bundle wording.
+  - Rebranded customer-facing product copy to `别墨叽` and `Mosmori / 墨始智能`.
+  - Replaced visible `Rubric`, `skill`, `blind-score`, `MVP`, and fallback wording with branded capability language.
+  - Rewrote README and capability audit docs so they describe product modules rather than source prompt bundles.
+  - Updated the compliance harness to validate the new capability-audit table format.
+  - Kept internal route ids and data field names stable where changing them would risk regressions.
+  - Added branded spark scoring API alias `/api/spark/score` while retaining the old endpoint for compatibility.
+  - Renamed the scoring-rule artifact file from `rubric-bump.md` to `score-rules-bump.md`.
+- Verification:
+  - First `python content-workbench\tools\skill_compliance_tests.py` run failed 26/27 because the new audit table had two capability rows without backticked entry labels.
+  - Updated the audit table formatting for those two rows.
+  - Final `python content-workbench\tools\skill_compliance_tests.py` passed 27/27.
+  - `python -m py_compile content-workbench\main.py content-workbench\cloud_mock.py content-workbench\tools\skill_compliance_tests.py` passed.
+  - `git diff --check -- content-workbench\main.py content-workbench\static\index.html content-workbench\README.md content-workbench\docs\skill-coverage-audit.md content-workbench\tools\skill_compliance_tests.py task_plan.md progress.md findings.md` passed with only CRLF warnings.
+  - Customer-facing scan of `static/index.html`, `README.md`, and `docs/skill-coverage-audit.md` found no matches for the internal/source terminology cleanup list.
+  - `mobile-miniapp/` was not modified.
