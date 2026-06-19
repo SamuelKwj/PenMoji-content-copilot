@@ -4,7 +4,7 @@
 Turn the existing Content Creator Pipeline skill bundle into a beginner-friendly local script workflow assistant for inspiration capture, spark solidification, review, scoring, prediction, video-script writing, and text/static-page material generation.
 
 ## Current Phase
-Clean Entry UI Verified
+Demo Readiness Hardening Complete
 
 ## Phases
 
@@ -135,6 +135,16 @@ Clean Entry UI Verified
 - [x] Auto-resize the textarea up to a maximum height.
 - [x] Collapse the composer after sending or when empty and unfocused.
 - [x] Verify focus, typing, blur, send, and console health in the browser.
+- **Status:** complete
+
+### Phase 16: Demo Readiness Hardening
+- [x] Create rollback tag `before-demo-readiness-hardening`.
+- [x] Add artifact flow metadata so generated files can be grouped by demo run or selected spark.
+- [x] Keep demo mode visually isolated from old runtime/test artifacts.
+- [x] Focus the output board on the selected spark when a fire card is clicked.
+- [x] Label local-compatible scoring honestly instead of implying a production blind-score provider.
+- [x] Improve title candidates to avoid duplicated "为什么/总是卡住" templates.
+- [x] Verify syntax, diff hygiene, browser demo flow, reset safety, and unchanged mini-program dirty files.
 - **Status:** complete
 
 ## Key Questions

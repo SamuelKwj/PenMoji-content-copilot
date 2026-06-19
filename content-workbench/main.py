@@ -204,6 +204,8 @@ def normalize_inspiration(item: dict, user_id: str = "local-user") -> dict:
         "selected_title",
         "scored_at",
         "artifact_paths",
+        "flow_id",
+        "flow_topic",
     ):
         if key in item:
             normalized[key] = item[key]
@@ -226,6 +228,27 @@ def mirror_to_project_archive(item: dict, config: dict) -> str:
         return ""
 
 
+def file_manifest_summary(path: Path, group: str) -> dict:
+    if group != "deliverables":
+        return {}
+    manifest_path = path.parent / "manifest.json"
+    if not manifest_path.exists():
+        return {}
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    source = manifest.get("source") if isinstance(manifest.get("source"), dict) else {}
+    return {
+        "id": manifest.get("id", ""),
+        "stage": manifest.get("stage", ""),
+        "request": manifest.get("request", ""),
+        "topic": manifest.get("topic", ""),
+        "deliverables": manifest.get("deliverables", []),
+        "source": source,
+    }
+
+
 def list_project_files(config: dict) -> dict:
     raw_project_path = config.get("content_project_path") or ""
     project_path = Path(raw_project_path) if raw_project_path.strip() else Path()
@@ -242,6 +265,7 @@ def list_project_files(config: dict) -> dict:
                             "name": path.name,
                             "size": path.stat().st_size,
                             "modified_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds"),
+                            "manifest": file_manifest_summary(path, name),
                         }
                     )
         groups[name] = files
@@ -542,18 +566,23 @@ def unique_strings(items: list[str]) -> list[str]:
 def title_topic(topic: str, max_len: int = 18) -> str:
     cleaned = extract_topic(topic)
     cleaned = re.sub(r"^(测试火花|演示流|火花|灵感)[：:]\s*", "", cleaned)
+    cleaned = re.sub(r"^(为什么|怎么|如何)\s*", "", cleaned)
+    cleaned = cleaned.replace("为什么", "").replace("总是", "")
+    cleaned = re.sub(r"(总是卡住|总卡住|卡住了|为什么)$", "", cleaned)
     cleaned = re.sub(r"[\r\n]+", " ", cleaned).strip()
     return cleaned[:max_len].strip(" ，。！？:：") or "这个选题"
 
 
 def generate_title_candidates(topic: str) -> list[str]:
     short = title_topic(topic)
-    question_title = short if "为什么" in short else f"为什么{short}总是卡住？"
+    subject = re.sub(r"(半途而废|总是卖不动货|卖不动货|总是卡住|卡在开始)$", "", short).strip(" ，。！？:：")
+    subject = subject or short
+    audience_subject = subject if subject.startswith(("普通人", "新手", "很多人")) else f"普通人做{subject}"
     candidates = [
-        question_title,
+        f"{short}，问题可能不在执行力",
+        f"{audience_subject}前，先问自己这个问题",
+        f"{short}，真正卡点是什么？",
         "你以为是执行力问题，其实是入口没想清楚",
-        f"{short}背后的真正问题",
-        "普通人做个人IP前，先问自己这个问题",
     ]
     return unique_strings(candidates)[:4]
 
@@ -667,7 +696,13 @@ def score_spark_item(item: dict, selected_title: str, config: dict, demo: bool =
     topic = item.get("content") or item.get("media_url") or "未命名灵感"
     score_data = blind_score_spark(topic, selected_title)
     rendered = {"score": render_blind_score(topic, score_data)}
-    source = {"inbox_id": item.get("id", ""), "score_source": score_data["score_source"]}
+    flow_id = item.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
+    source = {
+        "inbox_id": item.get("id", ""),
+        "score_source": score_data["score_source"],
+        "flow_topic": topic,
+        "flow_id": flow_id,
+    }
     if demo:
         source["demo"] = True
     artifacts = write_deliverable_artifacts(
@@ -681,6 +716,8 @@ def score_spark_item(item: dict, selected_title: str, config: dict, demo: bool =
     )
     existing_paths = item.get("artifact_paths") if isinstance(item.get("artifact_paths"), list) else []
     score_data["artifact_paths"] = [*existing_paths, *[entry["path"] for entry in artifacts]]
+    score_data["flow_topic"] = topic
+    score_data["flow_id"] = flow_id
     return score_data, artifacts
 
 
@@ -865,6 +902,9 @@ def write_deliverable_artifacts(
     if not deliverables and not llm_text:
         return []
     topic = extract_topic(message)
+    source_data = dict(source or {})
+    source_data.setdefault("flow_topic", topic)
+    source_data.setdefault("flow_id", hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12])
     project_path = project_path_from_config(config)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     artifact_dir = project_path / "deliverables" / f"{stamp}_{safe_slug(topic)}"
@@ -897,7 +937,7 @@ def write_deliverable_artifacts(
         "request": message,
         "topic": topic,
         "deliverables": deliverables,
-        "source": source or {},
+        "source": source_data,
         "files": files,
     }
     manifest_path = artifact_dir / "manifest.json"
@@ -1060,7 +1100,15 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if payload.get("force_local"):
                 config["api_key"] = ""
             message = payload.get("message", "")
-            source = {"demo": True} if payload.get("demo") else None
+            topic = extract_topic(message)
+            source = {
+                "flow_topic": payload.get("flow_topic") or topic,
+                "flow_id": payload.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12],
+            }
+            if payload.get("inbox_id"):
+                source["inbox_id"] = payload.get("inbox_id")
+            if payload.get("demo"):
+                source["demo"] = True
             reply = local_agent_reply(message, config, source=source)
             self.save_conversation_turn(message, reply)
             self.send_json(reply)
@@ -1110,6 +1158,8 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                         "tags": payload.get("tags") if isinstance(payload.get("tags"), list) else [],
                         "sync_status": "pulled",
                         "demo": bool(payload.get("demo")),
+                        "flow_id": payload.get("flow_id", ""),
+                        "flow_topic": payload.get("flow_topic", ""),
                     }
                 )
                 created = True

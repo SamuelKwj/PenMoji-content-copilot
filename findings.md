@@ -49,6 +49,7 @@
 | Use material selection plus output board on the right | Materials can be clicked into the dialogue, while outputs are kept visible as generated assets. |
 | Store spark scores in inbox fields | The UI should read `skill_score`, `score_breakdown`, and `score_source`; it should not invent frontend-only scores. |
 | Use a local blind-score-compatible adapter for the desktop MVP | The Python workbench cannot spawn Codex Task sub-agents, so v1 writes the same fields with `cheat-score-blind-compatible/local-v0`; a real provider can replace it later. |
+| Use flow metadata for demo and spark output grouping | Runtime history is preserved, while the output board can show only the active demo run or selected spark chain. |
 
 ## Issues Encountered
 | Issue | Resolution |
@@ -68,6 +69,7 @@
 | Demo flow could hang when a configured model endpoint was unreachable | Added `force_local` for demo chat calls so presentations use deterministic fallback and finish quickly. |
 | Spark score details made the first view too sparse for demos | Changed sparks to compact ranked rows by default, with dimensions and title candidates behind `详情`. |
 | Demo data needs to be disposable for repeated presentations | Demo items and artifacts now carry metadata and can be removed with `清理演示`. |
+| Old runtime artifacts can pollute a pitch demo | Added demo-view and selected-spark filtering so right-side outputs can stay focused without deleting user history. |
 
 ## Resources
 - Existing pipeline root: `C:\Users\samue\Documents\内容生产agent\Content Creator Pipeline`
@@ -88,3 +90,4 @@
 - Demo-flow check confirmed one click can produce `灵感固化卡`, `审核结果`, `视频脚本`, `发布文案`, and `静态页文案` in the output board with no browser console errors.
 - Demo-polish check confirmed the first view shows more ranked sparks, details are collapsed by default, newly scored sparks auto-expand, and `生成演示样本` provides in-progress/completion feedback.
 - Formal demo check confirmed top-bar `演示模式` and `清理演示` can generate and remove demo sparks/artifacts while preserving normal service status.
+- Demo-readiness hardening stores manifest summaries in `/api/files`, uses `flow_id`/`flow_topic`/`inbox_id` to group outputs, and labels local-compatible scores as `本地兼容评分`.

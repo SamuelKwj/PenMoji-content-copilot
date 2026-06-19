@@ -415,6 +415,21 @@
       font-weight: 760;
     }
 
+    .output-context {
+      border: 1px solid rgba(199, 81, 47, .18);
+      border-radius: 8px;
+      background: rgba(255, 248, 244, .72);
+      padding: 8px 9px;
+      margin-bottom: 9px;
+      font-size: 12px;
+      color: #6c5147;
+      line-height: 1.45;
+    }
+
+    .output-context strong {
+      color: #4a3730;
+    }
+
     .output-meta {
       display: flex;
       align-items: center;
@@ -470,6 +485,13 @@
       padding: 2px 6px;
       font-size: 11px;
       line-height: 1.35;
+    }
+
+    .score-source-note {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
     }
 
     .starter-hints {
@@ -972,7 +994,7 @@
           <div class="panel-head">
             <div>
               <h2>产出看板</h2>
-              <p class="muted">已生成内容会沉淀在这里。</p>
+              <p class="muted" id="outputScopeText">已生成内容会沉淀在这里。</p>
             </div>
             <div class="panel-actions">
               <button class="secondary" id="loadFiles">刷新</button>
@@ -1058,6 +1080,8 @@
     let localSparks = [];
     let toastTimer = null;
     let demoRunning = false;
+    let demoView = false;
+    let activeOutputContext = null;
     let composerFocused = false;
     const scoringSparkIds = new Set();
     const expandedSparkIds = new Set();
@@ -1178,7 +1202,17 @@
       addLocalSpark(extractSparkText(message), "对话输入");
       const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message }) });
       addMessage("agent", formatReply(reply), replyActions(reply));
-      if (reply.result?.topic) addLocalSpark(reply.result.topic, "已处理");
+      if (reply.result?.topic) {
+        addLocalSpark(reply.result.topic, "已处理");
+        activeOutputContext = {
+          mode: "spark",
+          demo: false,
+          sparkKey: reply.result.topic,
+          inboxId: "",
+          topic: reply.result.topic,
+          flowId: flowIdForTopic(reply.result.topic),
+        };
+      }
       await loadFiles();
       renderSparkBoard();
     }
@@ -1221,17 +1255,27 @@
         return {
           state: "scored",
           label: `${score.value} 分`,
-          title: `来自 ${score.source}`,
+          title: scoreSourceLabel(score.source),
           factors: skillScoreFactors(item),
+          sourceLabel: scoreSourceLabel(score.source),
         };
       }
       const factors = sparkScreeningSignals(item);
       return {
         state: "pending",
         label: "待盲评",
-        title: "当前只做火花初筛；正式评分必须由 cheat-score-blind 写入",
+        title: "待运行评分；完成后会写入 skill_score 和维度明细",
         factors,
+        sourceLabel: "待盲评",
       };
+    }
+
+    function scoreSourceLabel(source) {
+      const raw = String(source || "").toLowerCase();
+      if (raw.includes("compatible") || raw.includes("local-v0")) return "本地兼容评分";
+      if (raw.includes("blind")) return "真实 blind-score";
+      if (raw) return source;
+      return "评分来源待写入";
     }
 
     function skillScore(item) {
@@ -1325,7 +1369,7 @@
         const isScoring = scoringSparkIds.has(key);
         const isExpanded = expandedSparkIds.has(key);
         const node = document.createElement("div");
-        node.className = `spark-card ${isExpanded ? "expanded" : ""} ${selectedMaterial === content ? "active" : ""}`;
+        node.className = `spark-card ${isExpanded ? "expanded" : ""} ${selectedMaterial === content ? "active" : ""} ${activeOutputContext?.sparkKey === key ? "active" : ""}`;
         node.title = [evaluation.title, ...evaluation.factors.map(scoreFactorText)].join(" / ");
         node.innerHTML = `
           <div class="score-row">
@@ -1338,6 +1382,7 @@
           <div class="spark-title">${escapeHtml(content)}</div>
           <button class="secondary detail-toggle" type="button" data-toggle-details>${isExpanded ? "收起详情" : "详情"}</button>
           <div class="spark-details">
+            <div class="score-source-note">${escapeHtml(evaluation.sourceLabel)}</div>
             <div class="score-breakdown">
               ${evaluation.factors.map((factor) => `<span class="score-factor">${escapeHtml(scoreFactorText(factor))}</span>`).join("")}
             </div>
@@ -1364,9 +1409,25 @@
             await blindScoreSpark(item, title);
           });
         });
-        node.addEventListener("click", () => selectMaterial(content, "spark"));
+        node.addEventListener("click", () => {
+          focusOutputsForSpark(item);
+          selectMaterial(content, "spark");
+        });
         board.appendChild(node);
       });
+    }
+
+    function focusOutputsForSpark(item, options = {}) {
+      const content = item.content || item.media_url || "";
+      activeOutputContext = {
+        mode: options.demo ? "demo" : "spark",
+        demo: Boolean(options.demo || item.demo || content === DEMO_TOPIC),
+        sparkKey: sparkKey(item),
+        inboxId: item.id || "",
+        topic: item.flow_topic || content,
+        flowId: item.flow_id || flowIdForTopic(content),
+      };
+      renderOutputBoard();
     }
 
     function titleOptionsHtml(item) {
@@ -1387,21 +1448,26 @@
       if (scoringSparkIds.has(key)) return;
       scoringSparkIds.add(key);
       renderSparkBoard();
+      const content = item.content || item.media_url || "";
       try {
         const result = await api("/api/spark/blind-score", {
           method: "POST",
           body: JSON.stringify({
             id: item.id || "",
-            content: item.content || item.media_url || "",
+            content,
             media_url: item.media_url || "",
             type: item.type || "text",
             tags: item.tags || [],
-            selected_title: selectedTitle
+            selected_title: selectedTitle,
+            demo: Boolean(item.demo),
+            flow_topic: item.flow_topic || content,
+            flow_id: item.flow_id || flowIdForTopic(content)
           })
         });
         localSparks = localSparks.filter((spark) => sparkKey(spark) !== key && spark.content !== result.item.content);
         inboxItems = [result.item, ...inboxItems.filter((spark) => spark.id !== result.item.id)];
         expandedSparkIds.add(sparkKey(result.item));
+        focusOutputsForSpark(result.item, { demo: result.item.demo });
         await loadInbox();
         await loadFiles();
         renderSparkBoard();
@@ -1428,18 +1494,26 @@
       demoButton.textContent = "演示生成中...";
       hideStarterHints();
       const topic = DEMO_TOPIC;
+      const flowId = `demo-${Date.now().toString(36)}`;
+      demoView = true;
+      activeOutputContext = { mode: "demo", demo: true, sparkKey: "", inboxId: "", topic, flowId };
+      renderOutputBoard();
       showToast("开始生成演示流");
       try {
         addMessage("user", `演示流：${topic}`);
         const inbox = await api("/api/inbox", {
           method: "POST",
-          body: JSON.stringify({ type: "text", content: topic, tags: ["演示", "个人IP"], sync_status: "pulled", demo: true })
+          body: JSON.stringify({ type: "text", content: topic, tags: ["演示", "个人IP"], sync_status: "pulled", demo: true, flow_topic: topic, flow_id: flowId })
         });
+        activeOutputContext.inboxId = inbox.item.id;
+        activeOutputContext.sparkKey = sparkKey(inbox.item);
         await runDemoStep(`固化这个灵感：${topic}`);
         const scoreResult = await api("/api/spark/blind-score", {
           method: "POST",
-          body: JSON.stringify({ id: inbox.item.id, content: topic, demo: true })
+          body: JSON.stringify({ id: inbox.item.id, content: topic, demo: true, flow_topic: topic, flow_id: flowId })
         });
+        activeOutputContext.inboxId = scoreResult.item.id;
+        activeOutputContext.sparkKey = sparkKey(scoreResult.item);
         addMessage("agent", formatSparkScore(scoreResult.item), [{ label: "继续：审核", prompt: `审核这个灵感：${topic}` }]);
         await runDemoStep(`审核这个灵感：${topic}`);
         await runDemoStep(`写视频脚本：${topic}`);
@@ -1447,7 +1521,8 @@
         await runDemoStep(`生成静态页文案：${topic}`);
         await loadInbox();
         await loadFiles();
-        addMessage("agent", "演示样本已生成：左侧有盲评分火花榜，右侧有五类产物卡，可以直接打开、复制或继续生成。");
+        renderOutputBoard();
+        addMessage("agent", "演示样本已生成：左侧有盲评分火花榜，右侧只显示本次演示链路产物，可以直接打开、复制或继续生成。");
         showToast("演示流已生成");
       } catch (error) {
         setStatus(`演示流失败：${error.message}`, false);
@@ -1460,7 +1535,17 @@
 
     async function runDemoStep(message) {
       addMessage("user", message);
-      const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message, force_local: true, demo: true }) });
+      const reply = await api("/api/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          message,
+          force_local: true,
+          demo: true,
+          inbox_id: activeOutputContext?.inboxId || "",
+          flow_topic: activeOutputContext?.topic || DEMO_TOPIC,
+          flow_id: activeOutputContext?.flowId || flowIdForTopic(DEMO_TOPIC)
+        })
+      });
       addMessage("agent", formatReply(reply), replyActions(reply));
       return reply;
     }
@@ -1472,11 +1557,13 @@
       try {
         const result = await api("/api/demo/reset", { method: "POST", body: JSON.stringify({}) });
         localSparks = localSparks.filter((item) => !item.demo && item.content !== DEMO_TOPIC);
+        demoView = false;
+        activeOutputContext = null;
         expandedSparkIds.clear();
         await loadInbox();
         await loadFiles();
-        addMessage("agent", `演示数据已清理：移除 ${result.removed_inbox} 条火花、${result.removed_deliverable_dirs} 组产物。`);
-        showToast("演示数据已清理");
+        addMessage("agent", `演示数据已清理：只移除带演示标记的数据，共 ${result.removed_inbox} 条火花、${result.removed_deliverable_dirs} 组产物。普通历史产物已保留。`);
+        showToast("只清理了演示数据");
       } catch (error) {
         setStatus(`清理演示失败：${error.message}`, false);
       } finally {
@@ -1622,6 +1709,41 @@
       return { name, type, modifiedAt: file.modified_at || "" };
     }
 
+    function flowIdForTopic(topic) {
+      let hash = 0;
+      const text = String(topic || "");
+      for (let index = 0; index < text.length; index += 1) {
+        hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+      }
+      return Math.abs(hash).toString(16).padStart(8, "0").slice(0, 12);
+    }
+
+    function manifestSource(file) {
+      return file.manifest?.source || {};
+    }
+
+    function isDemoFile(file) {
+      const manifest = file.manifest || {};
+      const source = manifestSource(file);
+      return Boolean(source.demo) || manifest.topic === DEMO_TOPIC || String(manifest.request || "").includes(DEMO_TOPIC);
+    }
+
+    function fileMatchesContext(file, context) {
+      if (!context) return true;
+      const manifest = file.manifest || {};
+      const source = manifestSource(file);
+      if (context.demo) {
+        if (!isDemoFile(file)) return false;
+        if (context.flowId && source.flow_id === context.flowId) return true;
+        if (context.inboxId && source.inbox_id === context.inboxId) return true;
+        return false;
+      }
+      if (context.flowId && source.flow_id === context.flowId) return true;
+      if (context.inboxId && source.inbox_id === context.inboxId) return true;
+      if (context.topic && (source.flow_topic === context.topic || manifest.topic === context.topic || String(manifest.request || "").includes(context.topic))) return true;
+      return false;
+    }
+
     function groupLabel(group) {
       return {
         deliverables: "生成产物",
@@ -1635,8 +1757,12 @@
       const board = $("outputBoard");
       board.innerHTML = "";
       const cards = outputCards();
+      renderOutputScope(cards);
       if (!cards.length) {
-        board.innerHTML = `<p class="muted">暂无产出。完成一次固化、审核或脚本后会出现在这里。</p>`;
+        const emptyText = activeOutputContext
+          ? "当前链路暂无产出。继续完成审核、脚本或发布文案后会出现在这里。"
+          : "暂无产出。完成一次固化、审核或脚本后会出现在这里。";
+        board.innerHTML = `<p class="muted">${emptyText}</p>`;
         return;
       }
       cards.forEach((card) => {
@@ -1671,6 +1797,18 @@
         });
         board.appendChild(node);
       });
+    }
+
+    function renderOutputScope(cards = []) {
+      const scope = $("outputScopeText");
+      if (!scope) return;
+      if (activeOutputContext?.demo) {
+        scope.textContent = cards.length ? "演示视图：只显示本次样本链路产物。" : "演示视图：等待生成本次样本产物。";
+      } else if (activeOutputContext) {
+        scope.textContent = "当前火花链路：优先显示与所选火花相关的产物。";
+      } else {
+        scope.textContent = "全局视图：显示最新产物。";
+      }
     }
 
     async function readOutputFile(path) {
@@ -1713,6 +1851,7 @@
       Object.entries(fileGroups).forEach(([group, files]) => {
         contentFiles(files).forEach((file) => {
           const enriched = { ...file, group };
+          if (!fileMatchesContext(enriched, activeOutputContext)) return;
           const meta = fileMeta(enriched);
           if (!OUTPUT_TYPES.includes(meta.type)) return;
           buckets.get(meta.type).push(enriched);

@@ -323,3 +323,21 @@
   - `python -m py_compile content-workbench/main.py`
   - `git diff --check -- content-workbench/static/index.html`
   - Playwright confirmed initial compact state, focus expansion, multi-line auto-resize, draft-preserving expansion after blur, empty blur collapse, send collapse, service status normal, and no browser console errors.
+
+### Phase 16: Demo Readiness Hardening
+- **Status:** complete
+- Actions taken:
+  - Created rollback tag `before-demo-readiness-hardening`.
+  - Added manifest summaries to `/api/files` results so the frontend can filter outputs by demo/source metadata.
+  - Added `flow_id`, `flow_topic`, and `inbox_id` propagation for chat artifacts and spark score artifacts.
+  - Added frontend demo-view and selected-spark output filtering so old runtime artifacts do not pollute the pitch view.
+  - Changed spark score source copy to distinguish `本地兼容评分` from a future real blind-score provider.
+  - Improved title candidates to avoid duplicated question templates.
+- Verification:
+  - `python -m py_compile content-workbench\main.py content-workbench\cloud_mock.py` passed.
+  - `git diff --check -- content-workbench\main.py content-workbench\static\index.html task_plan.md progress.md findings.md` passed with only existing CRLF warnings.
+  - Isolated API validation on port `7890` confirmed demo artifacts carry `flow_id`, reset removes demo inbox/artifacts only, normal history remains, and title candidates avoid the repeated old templates.
+  - Browser validation confirmed selected sparks focus the output board, score source shows `本地兼容评分`, material chip add/delete still works, the adaptive composer and collapsible rails still work, service status stays `服务正常`, and console errors are empty.
+  - Browser demo validation confirmed `演示模式` shows only the current sample chain with `灵感固化卡`, `审核结果`, `视频脚本`, `发布文案`, and `静态页文案`; `清理演示` returns to the global view without deleting normal artifacts.
+  - Cleanup confirmed `.verify-runtime` is absent and validation ports `7888`, `7889`, and `7890` are no longer listening.
+  - `mobile-miniapp/project.config.json` and `mobile-miniapp/project.private.config.json` were not modified by this phase.
