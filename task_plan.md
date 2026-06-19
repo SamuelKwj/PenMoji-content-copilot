@@ -4,7 +4,7 @@
 Turn the existing Content Creator Pipeline skill bundle into a beginner-friendly local script workflow assistant for inspiration capture, spark solidification, review, scoring, prediction, video-script writing, and text/static-page material generation.
 
 ## Current Phase
-Prompt Blind-Score Runner Complete
+Skill Coverage Integration Complete
 
 ## Phases
 
@@ -166,6 +166,17 @@ Prompt Blind-Score Runner Complete
 - [x] Verify local fallback, model-backed scoring, syntax, diff hygiene, and unchanged mini-program dirty files.
 - **Status:** complete
 
+### Phase 19: Skill Coverage Integration
+- [x] Create rollback tag `before-skill-coverage-integration`.
+- [x] Audit all 19 child skills in `Content Creator Pipeline/skill`.
+- [x] Add workbench routes and local artifacts for previously missing skills.
+- [x] Add `抖音审稿` for limit/violation review based on the packaged `douyin-content-review` skill.
+- [x] Add support for init, migrate, status, seed, humanizer, hook, safe overlay, shoot, trends, recommend, learn-from, persona, bump, promotion, and good-article workflows.
+- [x] Add output-board categories for the new skill artifacts.
+- [x] Write `content-workbench/docs/skill-coverage-audit.md`.
+- [x] Verify syntax, diff hygiene, all new route outputs, and unchanged mini-program dirty files.
+- **Status:** complete
+
 ## Key Questions
 1. Should the mini-program be a full AI workbench? Answer: no, it is only a quick inspiration capture and sync entry.
 2. Should v1 be SaaS-first? Answer: no, v1 is local-first with light cloud for sync and subscription.
@@ -196,6 +207,7 @@ Prompt Blind-Score Runner Complete
 | Desktop packaging is not implemented | Next pass adds Windows service and installer work. |
 | Publish/retro loop is local-only | Keep it local for MVP credibility; later connect metrics import and real platform data. |
 | Prompt blind-score is model-dependent | It improves scoring credibility with minimal input, but true Codex Task sub-agent isolation remains a future hardening step. |
+| Full skill coverage is now exposed through local MVP adapters | Every packaged child skill has a workbench route and artifact, while external/API-heavy skills remain local approximations until production integrations exist. |
 
 ## Notes
 - The current workbench is an executable local MVP for guided script workflow, not the full commercial product.

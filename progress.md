@@ -374,3 +374,20 @@
   - Isolated no-key validation on port `7894` confirmed scoring falls back to `cheat-score-blind-compatible/local-v0`.
   - Isolated OpenAI-compatible mock validation confirmed scoring writes `cheat-score-blind-prompt/openai-compatible-v0`, seven rubric dimensions, `blind_input_policy=minimal-title-content-rubric-only`, and `score.md`.
   - `mobile-miniapp/project.config.json` and `mobile-miniapp/project.private.config.json` were not modified by this phase.
+
+### Phase 19: Skill Coverage Integration
+- **Status:** complete
+- Actions taken:
+  - Created rollback tag `before-skill-coverage-integration`.
+  - Audited `Content Creator Pipeline/skill` and found 19 child skills.
+  - Confirmed `douyin-content-review` existed in the packaged pipeline and had not been integrated into the product flow.
+  - Added route/output coverage for all previously missing child skills: init, migrate, status, seed, humanizer, hook, Douyin review, safe overlay, shoot, trends, recommend, learn-from, persona, bump, plus related promotion/good-article workflows from the parent pipeline.
+  - Added local renderers and artifact names for new outputs such as `抖音审稿`, `开头优化`, `去AI味改写`, `拍摄登记`, `受众画像`, and `Rubric升级建议`.
+  - Updated the output board so new artifact files are grouped under readable product categories.
+  - Wrote `content-workbench/docs/skill-coverage-audit.md`.
+- Verification:
+  - `python -m py_compile content-workbench\main.py content-workbench\cloud_mock.py` passed.
+  - `git diff --check -- content-workbench\main.py content-workbench\static\index.html content-workbench\docs\skill-coverage-audit.md task_plan.md progress.md findings.md` passed with only existing CRLF warnings.
+  - Isolated route validation on port `7895` tested 16 representative new trigger phrases; all 16 produced the expected deliverable type and markdown artifact.
+  - Cleanup confirmed `.verify-skill-coverage` is absent and port `7895` is no longer listening.
+  - `mobile-miniapp/project.config.json` and `mobile-miniapp/project.private.config.json` were not modified by this phase.

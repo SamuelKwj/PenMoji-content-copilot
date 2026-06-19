@@ -31,15 +31,31 @@ DEFAULT_PROJECT_PATH = DATA_ROOT / "projects" / "default-content-project"
 MASKED_KEY = "********"
 DEMO_TOPIC = "普通人为什么做个人IP总是半途而废"
 DELIVERABLE_LABELS = {
+    "init_state": "初始化档案",
     "spark_card": "灵感固化卡",
+    "seed_draft": "选题深挖稿",
     "review": "内容审核",
+    "douyin_review": "抖音审稿",
+    "hook_review": "开头优化",
     "score": "内容评分",
     "prediction": "发布预测",
     "video_script": "视频脚本",
+    "humanized_copy": "去AI味改写",
+    "overlay_card": "金句卡/Overlay",
     "text_pack": "标题/发布文字",
     "static_page": "静态页文案",
+    "shoot_record": "拍摄登记",
     "publish_record": "发布登记",
     "retro": "复盘结果",
+    "status_report": "状态看板",
+    "trend_candidates": "热点候选",
+    "topic_recommendation": "选题推荐",
+    "persona_report": "受众画像",
+    "rubric_bump": "Rubric升级建议",
+    "benchmark_analysis": "对标分析",
+    "migration_report": "迁移检查",
+    "promotion_plan": "投流决策",
+    "good_article_analysis": "好文分析",
 }
 SPARK_RUBRIC = [
     {"key": "HP", "label": "钩子强度", "weight": 1.5},
@@ -318,6 +334,22 @@ def project_path_from_config(config: dict) -> Path:
 def route_deliverables(message: str) -> tuple[str, list[str]]:
     text = message.strip()
     explicit_routes = [
+        (r"^(初始化|init|首次使用|我是新用户)", "skill_init", ["init_state"]),
+        (r"^(迁移|升级 state|migrate|schema)", "skill_migrate", ["migration_report"]),
+        (r"^(状态|看板|status|进度怎么样|我现在该做什么)", "skill_status", ["status_report"]),
+        (r"^(抓热点|今天有什么可做|fetch trends|trending)", "skill_trends", ["trend_candidates"]),
+        (r"^(推荐选题|下一篇做什么|next topic|挑一个选题)", "skill_recommend", ["topic_recommendation"]),
+        (r"^(学这个账号|找对标|导入对标|拆这几个对标|learn from)", "skill_learn_from", ["benchmark_analysis"]),
+        (r"^(更新受众画像|构造受众画像|我的观众是谁|刷新受众画像|persona)", "skill_persona", ["persona_report"]),
+        (r"^(升级 rubric|更新公式|调整权重|重校桶|bump rubric)", "skill_bump", ["rubric_bump"]),
+        (r"^(拍了|已拍|录完了|shot)", "skill_shoot", ["shoot_record"]),
+        (r"^(抖音审稿|检查限流|限流审稿|防违规|合规审核)", "skill_douyin_review", ["douyin_review"]),
+        (r"^(优化开头|开头怎么写|hook|前3秒|前三秒)", "skill_hook", ["hook_review"]),
+        (r"^(去AI味|去 AI 味|改得像人写|humanize|润色成人话)", "skill_humanizer", ["humanized_copy"]),
+        (r"^(金句卡|overlay|横版卡|全屏切卡|卡片素材)", "skill_overlay", ["overlay_card"]),
+        (r"^(投流|投放|要不要投|douyin promotion)", "skill_promotion", ["promotion_plan"]),
+        (r"^(收藏好文|分析好文|归档好文|提炼一下|分析这篇文章)", "skill_good_article", ["good_article_analysis"]),
+        (r"^(我想做一条|帮我挖一下|找选题|seed)", "skill_seed", ["seed_draft"]),
         (r"^(固化|收录|整理|候选|开始流程)", "spark_solidify", ["spark_card"]),
         (r"^(审核|审稿|验证|判断|检查)", "on_demand_production", ["review"]),
         (r"^(评分|打分|给.*评分|给.*打分)", "on_demand_production", ["score"]),
@@ -337,12 +369,20 @@ def route_deliverables(message: str) -> tuple[str, list[str]]:
     deliverables: list[str] = []
     if any(token in text for token in ["审核", "审稿", "验证", "值不值得", "值得做", "适合做", "人设匹配", "受众", "风险", "能不能发", "红线"]):
         deliverables.append("review")
+    if any(token in text for token in ["抖音审稿", "限流", "防违规", "合规"]):
+        deliverables.append("douyin_review")
+    if any(token in text for token in ["优化开头", "前3秒", "前三秒", "hook"]):
+        deliverables.append("hook_review")
     if any(token in text for token in ["评分", "打分", "分数"]):
         deliverables.append("score")
     if any(token in text for token in ["预测", "预判", "爆款", "播放"]):
         deliverables.append("prediction")
     if any(token in text for token in ["脚本", "口播脚本", "口播稿"]):
         deliverables.append("video_script")
+    if any(token in text for token in ["去AI味", "去 AI 味", "humanize"]):
+        deliverables.append("humanized_copy")
+    if any(token in text for token in ["金句卡", "overlay", "横版卡", "全屏切卡"]):
+        deliverables.append("overlay_card")
     if any(token in text for token in ["标题", "封面", "发布文案", "简介", "话题", "评论区"]):
         deliverables.append("text_pack")
     if any(token in text for token in ["静态页", "图文页", "卡片文案", "轮播"]):
@@ -542,6 +582,391 @@ def render_review(topic: str, config: dict) -> str:
 3. 给观众一个能立刻自测的判断标准。
 
 下一步建议：进入评分，判断这个选题是否值得写脚本。
+"""
+
+
+def render_init_state(topic: str, config: dict) -> str:
+    creator = config.get("creator", {})
+    return f"""# 初始化档案
+
+目标：把别墨叽工作台初始化成一个可持续校准的内容生产项目。
+
+当前配置：
+- 内容形态：{creator.get("content_type") or "待配置"}
+- 赛道/人设：{creator.get("niche") or "待配置"}
+- 平台：{creator.get("platform") or "douyin"}
+
+已具备：
+- 火花收录与看板
+- 最小输入 blind-score
+- 发布预测锁定
+- 发布登记与复盘
+- 本地云 mock 同步
+
+建议补充：
+1. 你做什么类型的内容？
+2. 你的目标受众是谁？
+3. 是否已有 3 条历史作品可作为基准？
+4. 是否有 1 个对标账号？
+
+下一步：先提交一个真实火花，或导入一个对标账号。
+"""
+
+
+def render_migration_report(topic: str, config: dict) -> str:
+    project_path = project_path_from_config(config)
+    return f"""# 迁移检查
+
+项目路径：{project_path}
+
+当前桌面工作台数据结构：
+- inbox.jsonl：火花/灵感
+- workflow_runs.jsonl：预测、发布、复盘链路
+- deliverables/：产物与 manifest
+
+检查结果：
+- 当前版本使用工作台内置 schema，无需执行旧 cheat state 迁移。
+- 如果后续导入 `.cheat-state.json`，需要先备份，再做字段映射。
+
+建议：
+1. 保留原始历史文件。
+2. 先导入候选池和历史发布数据。
+3. 再生成 audience/rubric 派生文件。
+"""
+
+
+def render_status_report(topic: str, config: dict) -> str:
+    inbox = read_jsonl(INBOX_PATH)
+    runs = read_workflow_runs()
+    scored = [item for item in inbox if item.get("skill_score") or item.get("blind_score")]
+    pending_retro = [run for run in runs if run.get("status") == "published"]
+    completed_retro = [run for run in runs if run.get("status") == "retrospected"]
+    return f"""# 状态看板
+
+火花总数：{len(inbox)}
+
+已评分火花：{len(scored)}
+
+工作流记录：{len(runs)}
+
+待复盘：{len(pending_retro)}
+
+已复盘：{len(completed_retro)}
+
+当前模式：本地 MVP / BYOK / 云 mock 可验证
+
+风险：
+- 真正云端、正式授权、安装包仍未生产化。
+- prompt blind-score 已可用，但 Codex Task sub-agent 隔离仍是更严格版本。
+
+建议下一步：
+1. 若火花少，先抓热点或导入对标。
+2. 若已发布但未复盘，优先补复盘。
+3. 若复盘样本 ≥5，再考虑 rubric 升级。
+"""
+
+
+def render_seed_draft(topic: str, config: dict) -> str:
+    return f"""# 选题深挖稿
+
+主题：{topic}
+
+一句话判断：这个选题可以做，但必须从一个具体场景切入。
+
+3 个角度：
+1. 误区角度：你以为问题在执行力，其实入口不属于你。
+2. 自测角度：这个主题你能不能连续讲十条？
+3. 案例角度：用一个真实失败/卡住的瞬间开头。
+
+大纲：
+1. 具体画面：一个人准备做内容，却每次开头都卡住。
+2. 反常识判断：不是不会做，而是在硬演不属于自己的方向。
+3. 判断标准：能不能连续讲十条且每条都有真实经验。
+4. 行动建议：先做小样本，不要一上来做长期主线。
+
+录制提示：
+- 用自己的经历替换示例。
+- 不要直接照拍这份 draft。
+- 先进入 blind-score，再决定是否写完整脚本。
+"""
+
+
+def render_douyin_review(topic: str, config: dict) -> str:
+    risks = []
+    text = topic
+    checks = [
+        ("联系方式/私域导流", ["微信", "加微", "VX", "二维码", "进群", "看主页", "看简介"]),
+        ("利益诱惑", ["稳赚", "暴利", "躺赚", "月入", "年入", "零成本", "包赚"]),
+        ("绝对化承诺", ["保证", "100%", "一定", "最", "第一", "唯一", "万能"]),
+        ("医疗/功效", ["治愈", "根治", "疗效", "医生同款", "三甲", "减肥", "祛斑"]),
+        ("低质AI/同质化", ["一键生成", "批量生成", "矩阵号", "搬运"]),
+        ("情绪对立/焦虑", ["韭菜", "废物", "完蛋", "阶层固化", "焦虑"]),
+    ]
+    for label, tokens in checks:
+        hits = [token for token in tokens if token in text]
+        if hits:
+            risks.append((label, "、".join(hits)))
+    risk_level = "高风险" if risks else "合规"
+    if len(risks) == 1:
+        risk_level = "中风险"
+    rows = "\n".join(f"| {label} | 命中：{hits} | 改成更中性的表达，避免承诺或导流。 |" for label, hits in risks)
+    if not rows:
+        rows = "| 未发现明显红线 | 低风险 | 仍建议发布前人工复核标题、字幕和画面。 |"
+    return f"""# 抖音内容审稿
+
+审稿对象：{topic}
+
+限流风险评级：{risk_level}
+
+| 问题项 | 判断 | 修改建议 |
+|--------|------|----------|
+{rows}
+
+播放量诊断：
+- 封面/标题：需要一眼让目标观众觉得“跟我有关”。
+- 开头 5 秒：建议用痛点 + 反常识判断，不要铺垫背景。
+- 内容密度：每 10 秒至少一个有效信息点，去掉套话。
+- 互动设计：结尾加一个自测问题，引导评论。
+
+最终结论：{"必须修改后再发" if risks else "可以发，但建议人工终审"}
+"""
+
+
+def render_hook_review(topic: str) -> str:
+    return f"""# 开头优化
+
+原始内容：{topic}
+
+诊断：
+- 当前信息还偏主题陈述，缺少“为什么我要听”的即时理由。
+- 开头需要同时包含话题、Hook、可信度。
+
+可用开头：
+1. 你以为自己做内容卡住，是因为不会坚持，其实可能是一开始就选错入口。
+2. 普通人做个人 IP 前，先别急着发，先问自己一个问题。
+3. 如果一个选题你讲不了十条，它可能根本不是你的主线。
+
+优化原则：
+- 不要先介绍背景。
+- 不要第一句给完整答案。
+- 第一秒就让观众觉得“这说的是我”。
+"""
+
+
+def render_humanized_copy(topic: str) -> str:
+    text = topic.replace("因此", "所以").replace("综上所述", "说白了").replace("赋能", "帮你")
+    return f"""# 去AI味改写
+
+原文：
+{topic}
+
+改写：
+{text}
+
+处理说明：
+- 去掉空泛连接词。
+- 多用短句。
+- 保留判断，不堆概念。
+- 后续建议再加入你自己的经历、口头禅和真实场景。
+"""
+
+
+def render_overlay_card(topic: str) -> str:
+    return f"""# 金句卡 / Overlay
+
+主题：{topic}
+
+横版 overlay 卡：
+- 不是你不努力
+- 是入口选错了
+- 先问：我能连续讲十条吗？
+
+全屏切卡：
+1. 做内容前，先别急着开账号
+2. 你要判断的不是热不热
+3. 而是这个主题是不是属于你
+4. 能连续讲十条，才值得做主线
+
+安全区建议：
+- 横版卡放下半屏，不遮眼睛和嘴。
+- 避开右侧抖音按钮区和底部标题字幕区。
+- 全屏切卡只做 2-4 秒 cutaway。
+"""
+
+
+def render_shoot_record(topic: str, config: dict) -> str:
+    return f"""# 拍摄登记
+
+主题：{topic}
+
+拍摄状态：已登记
+
+需要确认：
+1. 实拍稿是否与预测/脚本一致？
+2. 是否有临场改动？
+3. 是否需要追加预测 v2？
+
+素材清单：
+- 口播视频
+- 封面截图
+- 字幕文本
+- 发布标题
+
+下一步：发布后登记链接，进入复盘。
+"""
+
+
+def render_trend_candidates(topic: str) -> str:
+    base = title_topic(topic if topic != "未命名灵感" else "普通人内容创作")
+    return f"""# 热点候选
+
+说明：当前为本地候选生成，正式版本可接入抖音/B站/微博等热点源。
+
+候选：
+1. {base}：为什么很多人开头就做错了
+2. AI 时代普通人做内容，真正稀缺的不是工具
+3. 个人 IP 半途而废，往往不是执行力问题
+4. 新手做内容，先别学爆款公式
+
+下一步：选择一条进入 blind-score 排名。
+"""
+
+
+def render_topic_recommendation(topic: str) -> str:
+    inbox = read_jsonl(INBOX_PATH)
+    scored = sorted(
+        [item for item in inbox if item.get("skill_score") or item.get("blind_score")],
+        key=lambda item: float(item.get("skill_score") or item.get("blind_score") or 0),
+        reverse=True,
+    )[:5]
+    rows = "\n".join(f"| {index + 1} | {item.get('content') or item.get('media_url')} | {item.get('skill_score') or item.get('blind_score')} |" for index, item in enumerate(scored))
+    if not rows:
+        rows = "| 1 | 暂无已评分候选 | - |"
+    return f"""# 选题推荐
+
+| 排名 | 选题 | 分数 |
+|------|------|------|
+{rows}
+
+推荐逻辑：
+- 优先已 blind-score 的火花。
+- 分数相近时，优先具体、有痛点、有个人场景的选题。
+- 候选池为空时，先抓热点或提交 3 条火花。
+"""
+
+
+def render_persona_report(topic: str) -> str:
+    runs = read_workflow_runs()
+    retros = [run for run in runs if run.get("status") == "retrospected"]
+    return f"""# 受众画像
+
+数据来源：本地复盘记录 {len(retros)} 条
+
+初步画像：
+- 关注“普通人如何开始”的观众。
+- 对执行力、入口选择、个人 IP、内容创作焦虑有代入。
+- 更吃具体经历和自测标准，不太吃空泛方法论。
+
+内容偏好：
+1. 反常识判断。
+2. 可自测的问题。
+3. 普通人的真实失败/卡住场景。
+
+注意：受众画像含复盘信号，不能进入 blind-score 输入。
+"""
+
+
+def render_rubric_bump(topic: str) -> str:
+    runs = read_workflow_runs()
+    retros = [run for run in runs if run.get("status") == "retrospected"]
+    ready = len(retros) >= 5
+    return f"""# Rubric 升级建议
+
+复盘样本数：{len(retros)}
+
+是否建议升级：{"可以进入人工校准" if ready else "暂不建议，样本不足"}
+
+当前建议：
+- 样本 < 5：只记录观察，不改权重。
+- 样本 ≥ 5：对照 blind-score 与真实数据，检查哪些维度高估/低估。
+- 升级时必须保留旧版本，避免回看污染。
+
+候选调整：
+1. 如果高分低播，检查 HP/NA 是否被高估。
+2. 如果低分高互动，检查 ER/QL 是否被低估。
+3. 如果收藏高但评论低，加入“方法论保存价值”观察。
+"""
+
+
+def render_benchmark_analysis(topic: str) -> str:
+    return f"""# 对标分析
+
+对标对象/材料：{topic}
+
+拆解维度：
+1. 开头结构：第一句话是否直接制造关系。
+2. 观点结构：是否有以为/其实的反差。
+3. 案例结构：是否有真实场景托底。
+4. 收束结构：是否给观众一个自测或行动标准。
+
+可迁移 pattern：
+- 先讲一个普通人熟悉的卡点。
+- 再给一个反常识判断。
+- 最后给一个低门槛自测问题。
+
+写回建议：
+- 把有效开头写入 script_patterns。
+- 把观众反馈写入 persona。
+- 不要照抄表达，只迁移结构。
+"""
+
+
+def render_promotion_plan(topic: str) -> str:
+    return f"""# 投流决策
+
+内容/链接：{topic}
+
+本地规则：
+- 不看数据不建议直接投。
+- 先看自然流量速度、5 秒完播、互动率。
+- 素材过不了抖音审稿，不投。
+
+判断模板：
+1. 5 秒完播低：先改开头，不投。
+2. 点击低：先换封面/标题，不投。
+3. 完播 OK 互动低：加评论引导，小额测试。
+4. 完播和互动都好：可以小预算放大。
+
+需要补充数据：
+- 播放量
+- 封面点击率
+- 5秒完播率
+- 平均观看时长
+- 点赞/评论/收藏/转发
+"""
+
+
+def render_good_article_analysis(topic: str) -> str:
+    return f"""# 好文分析
+
+材料：{topic}
+
+核心观点：
+这篇材料可被当作选题种子，需要提炼出一个能被普通观众立刻代入的问题。
+
+金句摘抄：
+- 先保留原句，再改成自己的口语表达。
+- 能当标题的句子优先进入火花看板。
+
+结构分析：
+1. 开头是否有具体冲突。
+2. 中段是否有清晰递进。
+3. 结尾是否给出判断标准。
+
+归档建议：
+- 原文进入好文收藏。
+- 金句进入素材选择。
+- 结构 pattern 进入对标分析。
 """
 
 
@@ -1038,13 +1463,29 @@ def render_static_page(topic: str) -> str:
 
 def render_deliverables(topic: str, deliverables: list[str], config: dict) -> dict[str, str]:
     renderers = {
+        "init_state": lambda: render_init_state(topic, config),
         "spark_card": lambda: render_spark_card(topic, config),
+        "seed_draft": lambda: render_seed_draft(topic, config),
         "review": lambda: render_review(topic, config),
+        "douyin_review": lambda: render_douyin_review(topic, config),
+        "hook_review": lambda: render_hook_review(topic),
         "score": lambda: render_score(topic),
         "prediction": lambda: render_prediction(topic),
         "video_script": lambda: render_video_script(topic),
+        "humanized_copy": lambda: render_humanized_copy(topic),
+        "overlay_card": lambda: render_overlay_card(topic),
         "text_pack": lambda: render_text_pack(topic),
         "static_page": lambda: render_static_page(topic),
+        "shoot_record": lambda: render_shoot_record(topic, config),
+        "status_report": lambda: render_status_report(topic, config),
+        "trend_candidates": lambda: render_trend_candidates(topic),
+        "topic_recommendation": lambda: render_topic_recommendation(topic),
+        "persona_report": lambda: render_persona_report(topic),
+        "rubric_bump": lambda: render_rubric_bump(topic),
+        "benchmark_analysis": lambda: render_benchmark_analysis(topic),
+        "migration_report": lambda: render_migration_report(topic, config),
+        "promotion_plan": lambda: render_promotion_plan(topic),
+        "good_article_analysis": lambda: render_good_article_analysis(topic),
     }
     return {key: renderers[key]() for key in deliverables if key in renderers}
 
@@ -1071,15 +1512,31 @@ def write_deliverable_artifacts(
     files: list[dict] = []
 
     name_map = {
+        "init_state": "init-state.md",
         "spark_card": "spark-card.md",
+        "seed_draft": "seed-draft.md",
         "review": "review.md",
+        "douyin_review": "douyin-review.md",
+        "hook_review": "hook-review.md",
         "score": "score.md",
         "prediction": "prediction.md",
         "video_script": "video-script.md",
+        "humanized_copy": "humanized-copy.md",
+        "overlay_card": "overlay-card.md",
         "text_pack": "text-pack.md",
         "static_page": "static-page.md",
+        "shoot_record": "shoot-record.md",
         "publish_record": "publish-record.md",
         "retro": "retro.md",
+        "status_report": "status-report.md",
+        "trend_candidates": "trend-candidates.md",
+        "topic_recommendation": "topic-recommendation.md",
+        "persona_report": "persona-report.md",
+        "rubric_bump": "rubric-bump.md",
+        "benchmark_analysis": "benchmark-analysis.md",
+        "migration_report": "migration-report.md",
+        "promotion_plan": "promotion-plan.md",
+        "good_article_analysis": "good-article-analysis.md",
     }
     for key, content in rendered.items():
         path = artifact_dir / name_map.get(key, f"{key}.md")
@@ -1352,10 +1809,14 @@ def next_step_for(deliverables: list[str], topic: str) -> dict:
     present = set(deliverables)
     if "static_page" in present:
         return {"label": "完成", "prompt": "这个选题的 MVP 文字流程已完成，可以人工修改脚本后进入拍摄。"}
+    if "douyin_review" in present:
+        return {"label": "视频脚本", "prompt": f"写视频脚本：{topic}"}
+    if "hook_review" in present:
+        return {"label": "抖音审稿", "prompt": f"抖音审稿：{topic}"}
     if "video_script" in present:
         return {"label": "静态页文案", "prompt": f"生成静态页文案：{topic}"}
     if "prediction" in present:
-        return {"label": "视频脚本", "prompt": f"写视频脚本：{topic}"}
+        return {"label": "抖音审稿", "prompt": f"抖音审稿：{topic}"}
     if "score" in present:
         return {"label": "预测", "prompt": f"预测这个选题：{topic}"}
     if "review" in present:
@@ -1364,6 +1825,8 @@ def next_step_for(deliverables: list[str], topic: str) -> dict:
         return {"label": "静态页文案", "prompt": f"生成静态页文案：{topic}"}
     if "spark_card" in present:
         return {"label": "审核", "prompt": f"审核这个灵感：{topic}"}
+    if "seed_draft" in present:
+        return {"label": "盲评分", "prompt": f"给这个选题评分：{topic}"}
     return {"label": "灵感固化", "prompt": f"固化这个灵感：{topic}"}
 
 

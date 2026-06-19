@@ -1086,7 +1086,13 @@
     const scoringSparkIds = new Set();
     const expandedSparkIds = new Set();
     const DEMO_TOPIC = "普通人为什么做个人IP总是半途而废";
-    const OUTPUT_TYPES = ["灵感固化卡", "审核结果", "发布预测", "视频脚本", "发布文案", "静态页文案", "发布登记", "复盘结果"];
+    const OUTPUT_TYPES = [
+      "初始化档案", "状态看板", "热点候选", "选题推荐", "对标分析",
+      "灵感固化卡", "选题深挖稿", "审核结果", "抖音审稿", "开头优化",
+      "发布预测", "视频脚本", "去AI味改写", "金句卡/Overlay",
+      "发布文案", "静态页文案", "拍摄登记", "发布登记", "复盘结果",
+      "受众画像", "Rubric升级建议", "迁移检查", "投流决策", "好文分析"
+    ];
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -1702,12 +1708,28 @@
       const name = file.name || "未命名文件";
       const lower = name.toLowerCase();
       const type = [
+        [/init-state/, "初始化档案"],
+        [/status-report/, "状态看板"],
+        [/trend-candidates/, "热点候选"],
+        [/topic-recommendation/, "选题推荐"],
+        [/benchmark-analysis/, "对标分析"],
+        [/overlay-card/, "金句卡/Overlay"],
+        [/good-article-analysis/, "好文分析"],
         [/spark|card|idea|brief/, "灵感固化卡"],
+        [/seed-draft/, "选题深挖稿"],
+        [/douyin-review/, "抖音审稿"],
+        [/hook-review/, "开头优化"],
         [/review|audit|score|topic|analysis/, "审核结果"],
         [/prediction|predict/, "发布预测"],
         [/video|script|speaking|storyboard/, "视频脚本"],
+        [/humanized-copy/, "去AI味改写"],
+        [/shoot-record/, "拍摄登记"],
         [/publish-record|publish_record/, "发布登记"],
         [/retro|review-after|postmortem/, "复盘结果"],
+        [/persona-report/, "受众画像"],
+        [/rubric-bump/, "Rubric升级建议"],
+        [/migration-report/, "迁移检查"],
+        [/promotion-plan/, "投流决策"],
         [/publish|copy|title|text/, "发布文案"],
         [/static|page/, "静态页文案"],
       ].find(([pattern]) => pattern.test(lower))?.[1] || groupLabel(file.group || "");
@@ -1942,13 +1964,29 @@
     function outputNote(type) {
       return {
         "灵感固化卡": "可作为下一轮脚本或审核的起点",
+        "初始化档案": "记录首次配置和下一步",
+        "状态看板": "查看火花、评分、发布和复盘进度",
+        "热点候选": "没有素材时的候选池入口",
+        "选题推荐": "从候选池或火花榜挑下一条",
+        "对标分析": "拆对标账号/内容的可迁移结构",
+        "选题深挖稿": "围绕一个火花深挖角度和大纲",
         "审核结果": "判断值不值得做，并保留风险与改法",
+        "抖音审稿": "检查限流红线和发布前风险",
+        "开头优化": "优化前 3 秒钩子",
         "发布预测": "发布前的判断已锁定，可登记真实发布",
         "视频脚本": "可继续生成分镜、口播或剪辑方案",
+        "去AI味改写": "把模板腔改成更像真人表达",
+        "金句卡/Overlay": "露脸同屏或切卡素材",
         "发布文案": "标题、简介和平台发布文案",
         "静态页文案": "适合沉淀成长文或展示页",
+        "拍摄登记": "记录已拍摄和是否需要预测 v2",
         "发布登记": "记录真实链接和发布时间，可生成复盘",
-        "复盘结果": "把发布数据反写为下一轮判断"
+        "复盘结果": "把发布数据反写为下一轮判断",
+        "受众画像": "从复盘和评论派生观众画像",
+        "Rubric升级建议": "判断是否需要调整评分公式",
+        "迁移检查": "检查旧状态文件升级路径",
+        "投流决策": "按数据判断是否投放",
+        "好文分析": "沉淀外部好文的观点、金句和结构"
       }[type] || "可继续放入对话生成下一步";
     }
 

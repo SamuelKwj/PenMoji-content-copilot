@@ -25,6 +25,7 @@
 - Topic text can contain workflow-like words such as `验证`; route intent must prioritize the explicit command prefix (`固化这个灵感`, `审核这个灵感`, etc.) over keywords inside the topic.
 - The current accepted UI direction is "fewer entrances, cleaner page": one-time settings live behind a gear button; content positioning is captured through dialogue; the left rail is a scored spark board; the right rail is material selection plus output board.
 - Bare content-shape words such as `口播内容` should not route to script generation. Only explicit script intent such as `写视频脚本`, `口播脚本`, or `口播稿` should trigger the video-script step.
+- `Content Creator Pipeline/skill` contains 19 child skills. Before Phase 19, several were documented but not exposed in the workbench product flow, including `douyin-content-review`, `dbs-hook`, `humanizer`, `douyin-safe-overlay`, `cheat-shoot`, `cheat-status`, `cheat-trends`, `cheat-recommend`, `cheat-learn-from`, `cheat-persona`, `cheat-bump`, `cheat-init`, and `cheat-migrate`.
 
 ## Technical Decisions
 | Decision | Rationale |
@@ -53,6 +54,7 @@
 | Add a local workflow run ledger before cloud/platform integrations | Prediction, publish registration, and retro can be credible in the MVP without waiting for deployed cloud metrics imports. |
 | Treat prediction artifacts as immutable once generated | Publish and retro records reference prediction hashes/paths instead of rewriting prediction content. |
 | Use prompt-limited model blind scoring before full sub-agent integration | The product can send only title/body/rubric to an OpenAI-compatible model now, while future Codex Task sub-agent isolation remains the stricter version. |
+| Expose every packaged child skill as a workbench route | Prevents bundled skills from becoming dead documentation and keeps product behavior aligned with the integrated pipeline. |
 
 ## Issues Encountered
 | Issue | Resolution |
@@ -75,6 +77,7 @@
 | Old runtime artifacts can pollute a pitch demo | Added demo-view and selected-spark filtering so right-side outputs can stay focused without deleting user history. |
 | The workflow previously stopped at generated copy/scripts | Added local publish registration and retro artifacts so a content idea can be followed through after publishing. |
 | Local spark scoring did not use a model even when configured | Added a prompt blind-score runner with strict JSON parsing and local fallback. |
+| The packaged `douyin-content-review` skill was missed in the product flow | Added `抖音审稿` route and artifact generation, including limit/violation risk checks and playback diagnosis prompts. |
 
 ## Resources
 - Existing pipeline root: `C:\Users\samue\Documents\内容生产agent\Content Creator Pipeline`
@@ -98,3 +101,4 @@
 - Demo-readiness hardening stores manifest summaries in `/api/files`, uses `flow_id`/`flow_topic`/`inbox_id` to group outputs, and labels local-compatible scores as `本地兼容评分`.
 - Publish-retro loop check confirmed a single chain can generate `发布预测`, `发布登记`, and `复盘结果` artifacts under one `flow_id`, while the prediction remains hash-locked in `workflow_runs.jsonl`.
 - Prompt blind-score runner check confirmed no-key fallback stays local, while an OpenAI-compatible scorer writes `cheat-score-blind-prompt/openai-compatible-v0` with clean rubric dimensions and minimal-input policy metadata.
+- Skill coverage integration check confirmed 16 representative missing-skill trigger phrases all route to expected deliverable types and markdown artifacts; the full 19-child-skill coverage table is recorded in `content-workbench/docs/skill-coverage-audit.md`.
