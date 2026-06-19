@@ -673,6 +673,15 @@
       border-top: 1px solid var(--line);
       padding: 12px;
       background: #fffdfa;
+      transition: padding .18s ease, box-shadow .18s ease, background .18s ease;
+    }
+
+    .chat-input.composer-compact {
+      padding: 8px 10px;
+    }
+
+    .chat-input.composer-expanded {
+      box-shadow: 0 -14px 34px rgba(91, 61, 42, .10);
     }
 
     .compose-row {
@@ -692,8 +701,24 @@
     }
 
     .chat-input textarea {
-      min-height: 82px;
+      min-height: 44px;
       max-height: 180px;
+      resize: none;
+      overflow: hidden;
+      transition: min-height .18s ease, height .18s ease, box-shadow .18s ease;
+    }
+
+    .chat-input.composer-expanded textarea {
+      min-height: 96px;
+      overflow: auto;
+    }
+
+    .chat-input.composer-compact textarea {
+      max-height: 44px;
+    }
+
+    .chat-input.composer-compact .quick-row {
+      display: none;
     }
 
     .quick-row {
@@ -898,7 +923,7 @@
               <button class="starter-hint" data-prompt="基于最近的火花看板，帮我挑一个最适合今天写脚本的方向。">从火花里挑今天的脚本方向</button>
             </div>
           </div>
-          <div class="chat-input">
+          <div class="chat-input composer-compact" id="chatComposer">
             <div>
               <div class="chat-material-chip" id="chatMaterialChip" hidden>
                 <div class="tiny">素材标签</div>
@@ -1033,6 +1058,7 @@
     let localSparks = [];
     let toastTimer = null;
     let demoRunning = false;
+    let composerFocused = false;
     const scoringSparkIds = new Set();
     const expandedSparkIds = new Set();
     const DEMO_TOPIC = "普通人为什么做个人IP总是半途而废";
@@ -1120,12 +1146,34 @@
       if (hints) hints.hidden = true;
     }
 
+    function updateComposerState(options = {}) {
+      const composer = $("chatComposer");
+      const input = $("chatInput");
+      const hasDraft = input.value.trim().length > 0;
+      const shouldExpand = !options.forceCompact && (composerFocused || hasDraft || Boolean(selectedMaterial));
+      composer.classList.toggle("composer-expanded", shouldExpand);
+      composer.classList.toggle("composer-compact", !shouldExpand);
+      resizeComposerInput();
+    }
+
+    function resizeComposerInput() {
+      const input = $("chatInput");
+      const expanded = $("chatComposer").classList.contains("composer-expanded");
+      const minHeight = expanded ? 96 : 44;
+      const maxHeight = expanded ? 180 : 44;
+      input.style.height = "auto";
+      input.style.height = `${Math.min(Math.max(input.scrollHeight, minHeight), maxHeight)}px`;
+    }
+
     async function sendChat(forcedMessage) {
       const rawMessage = (forcedMessage || $("chatInput").value).trim();
       const message = forcedMessage ? rawMessage : composeChatMessage(rawMessage);
       if (!message) return;
       $("chatInput").value = "";
+      composerFocused = false;
+      $("chatInput").blur();
       if (selectedMaterial) clearSelectedMaterial({ clearInput: false, quiet: true });
+      updateComposerState();
       addMessage("user", message);
       addLocalSpark(extractSparkText(message), "对话输入");
       const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message }) });
@@ -1505,6 +1553,7 @@
       selectedMaterialPrompt = `${label === "spark" ? "固化这个灵感" : "基于这个素材继续"}：`;
       $("chatInput").value = selectedMaterialPrompt;
       $("chatInput").focus();
+      updateComposerState();
       renderSparkBoard();
       renderMaterialList();
       showToast("已添加素材标签");
@@ -1540,6 +1589,7 @@
       selectedMaterialLabel = "";
       selectedMaterialDisplay = "";
       selectedMaterialPrompt = "";
+      updateComposerState();
       renderSparkBoard();
       renderMaterialList();
       if (!quiet) showToast("已删除素材标签");
@@ -1817,18 +1867,35 @@
         hideStarterHints();
         $("chatInput").value = button.dataset.prompt;
         $("chatInput").focus();
+        updateComposerState();
       });
     });
     $("runDemoFlow").addEventListener("click", runDemoFlow);
     $("resetDemoFlow").addEventListener("click", resetDemoFlow);
 
     $("sendChat").addEventListener("click", () => sendChat());
+    $("chatInput").addEventListener("focus", () => {
+      composerFocused = true;
+      updateComposerState();
+    });
+    $("chatInput").addEventListener("blur", () => {
+      window.setTimeout(() => {
+        composerFocused = false;
+        updateComposerState();
+      }, 120);
+    });
     $("chatInput").addEventListener("keydown", (event) => {
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) sendChat();
     });
     $("chatInput").addEventListener("input", () => {
       if (selectedMaterial && !$("chatInput").value.trim()) {
         clearSelectedMaterial({ clearInput: false, quiet: true });
+      }
+      updateComposerState();
+    });
+    $("chatLog").addEventListener("scroll", () => {
+      if (!composerFocused && !$("chatInput").value.trim() && !selectedMaterial) {
+        updateComposerState({ forceCompact: true });
       }
     });
     $("refreshAll").addEventListener("click", async () => {
@@ -1867,6 +1934,7 @@
         await loadInbox();
         await loadFiles();
         addMessage("agent", "我已经准备好了。直接输入灵感，也可以把内容形态、平台、赛道、人设一起写在对话里。左侧会自动形成火花看板，右侧可以选择素材进入对话。");
+        updateComposerState();
       } catch (error) {
         setStatus(error.message, false);
       }

@@ -310,3 +310,16 @@
   - `python -m py_compile content-workbench/main.py`
   - `git diff --check -- content-workbench/main.py content-workbench/static/index.html`
   - Playwright confirmed top-bar demo controls, demo generation, five output categories, demo cleanup back to zero demo sparks, service status staying normal, and no browser console errors.
+
+### Phase 15: Adaptive Chat Composer
+- **Status:** complete
+- Actions taken:
+  - Created rollback tag `before-adaptive-composer`.
+  - Added compact/expanded composer states to the center chat input.
+  - Compact state shows a one-line textarea and hides quick chips for browsing conversation history.
+  - Focus, draft content, and selected material expand the composer; textarea height auto-resizes up to a max.
+  - Sending clears focus and collapses the composer back to browsing mode.
+- Verification:
+  - `python -m py_compile content-workbench/main.py`
+  - `git diff --check -- content-workbench/static/index.html`
+  - Playwright confirmed initial compact state, focus expansion, multi-line auto-resize, draft-preserving expansion after blur, empty blur collapse, send collapse, service status normal, and no browser console errors.

@@ -128,6 +128,15 @@ Clean Entry UI Verified
 - [x] Verify demo generation, demo cleanup, output board refresh, service status, and browser console health.
 - **Status:** complete
 
+### Phase 15: Adaptive Chat Composer
+- [x] Create rollback tag `before-adaptive-composer`.
+- [x] Make the chat composer compact by default while browsing.
+- [x] Expand the composer on focus, draft input, or selected material.
+- [x] Auto-resize the textarea up to a maximum height.
+- [x] Collapse the composer after sending or when empty and unfocused.
+- [x] Verify focus, typing, blur, send, and console health in the browser.
+- **Status:** complete
+
 ## Key Questions
 1. Should the mini-program be a full AI workbench? Answer: no, it is only a quick inspiration capture and sync entry.
 2. Should v1 be SaaS-first? Answer: no, v1 is local-first with light cloud for sync and subscription.
