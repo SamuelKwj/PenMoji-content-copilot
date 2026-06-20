@@ -1,10 +1,10 @@
-# Task Plan: Mosmori Workbench
+# Task Plan: PenMoji Workbench
 
 ## Goal
-Build Mosmori as a clean local-first content workbench for inspiration capture, scoring, guided dialogue, material selection, output generation, publish registration, and review loops.
+Build PenMoji by Mosmori as a clean local-first content workbench for inspiration capture, scoring, guided dialogue, material selection, output generation, publish registration, and review loops.
 
 ## Current Phase
-Mosmori Full Clean And Dark Theme Complete
+PenMoji Three-End Sync And Device Binding Complete
 
 ## Phases
 
@@ -53,7 +53,26 @@ Mosmori Full Clean And Dark Theme Complete
 - [x] Commit only relevant files.
 - **Status:** complete
 
+### Phase 7: PenMoji Mobile Capture Polish
+- [x] Rename the visible mobile product surface to PenMoji.
+- [x] Replace the debug-style form with a quick capture experience.
+- [x] Hide Cloud Base URL behind settings.
+- [x] Add local draft queue, retry, edit, delete, link detection, tags, and desktop processing intent.
+- [x] Preserve `capture_intent` and `client_created_at` through cloud mock and desktop inbox.
+- [x] Verify syntax, JSON, compliance harness, and diff hygiene.
+- **Status:** complete
+
+### Phase 8: Three-End Sync And Device Binding
+- [x] Create rollback tag `before-penmoji-device-binding`.
+- [x] Upgrade the local cloud scaffold from a raw mock into a file-backed sync service shape with device binding state.
+- [x] Add desktop-side device code / QR-style binding entry and link-status visibility.
+- [x] Add mini-program device-code binding so Cloud Base URL is no longer the normal user path.
+- [x] Keep the new operations skills out of the main workflow for now; document them as future paid operations update packages.
+- [x] Verify Python syntax, mini-program JS/JSON syntax, compliance harness, sync field preservation, and Git diff hygiene.
+- **Status:** complete
+
 ## Boundaries
 - Current product remains local-first; cloud sync and authorization are still simulated locally.
 - The workbench does not generate finished video files; it produces scripts, copy, scoring, registration, and review artifacts.
 - User data stays outside the install directory under `%USERPROFILE%\.content-workbench`.
+- Operations skills such as Douyin hashtag and publish timing advisors are future monetizable update packages, not part of the base workflow in this phase.

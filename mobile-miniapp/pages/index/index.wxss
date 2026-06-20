@@ -205,6 +205,34 @@
   margin-top: 14rpx;
 }
 
+.bind-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132rpx;
+  gap: 14rpx;
+}
+
+.bind-input {
+  text-transform: uppercase;
+  font-weight: 760;
+  letter-spacing: 4rpx;
+}
+
+.bind-status {
+  margin-top: 14rpx;
+  color: #7b6f66;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.settings-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+.dev-field {
+  padding-top: 18rpx;
+  border-top: 1rpx solid #e1d9d1;
+}
+
 .tag-input {
   min-height: 68rpx;
 }

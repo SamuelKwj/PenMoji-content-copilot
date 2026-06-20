@@ -2,6 +2,8 @@ const app = getApp()
 
 const QUEUE_KEY = "penmojiCaptureQueue"
 const CLOUD_URL_KEY = "penmojiCloudBaseUrl"
+const LINKED_DEVICE_KEY = "penmojiLinkedDeviceId"
+const MOBILE_DEVICE_KEY = "penmojiMobileDeviceId"
 
 const TYPE_DEFS = [
   { key: "text", label: "文字灵感" },
@@ -42,6 +44,12 @@ function isVideoLink(url) {
   return /douyin|iesdouyin|tiktok|bilibili|xiaohongshu|xhslink/i.test(url || "")
 }
 
+function normalizeLinkCode(value) {
+  const text = String(value || "").trim()
+  const match = text.match(/[?&]code=([A-Za-z0-9]+)/) || text.match(/\b([A-Za-z0-9]{6})\b/)
+  return (match ? match[1] : text).replace(/[^A-Za-z0-9]/g, "").slice(0, 12).toUpperCase()
+}
+
 function statusText(status, remoteStatus) {
   const value = remoteStatus || status
   return {
@@ -79,6 +87,9 @@ function timeLabel(value) {
 Page({
   data: {
     cloudBaseUrl: "",
+    linkCode: "",
+    linkedDeviceId: "",
+    bindingStatus: "尚未绑定电脑端",
     showSettings: false,
     captureTypes: [],
     captureIntents: [],
@@ -99,6 +110,7 @@ Page({
     submitting: false,
     syncingQueue: false,
     loadingStatus: false,
+    binding: false,
     editingDraftId: "",
     submitButtonText: "保存并同步"
   },
@@ -108,7 +120,9 @@ Page({
     const queue = this.readQueue()
     this.setData({
       cloudBaseUrl: savedUrl || app.globalData.defaultCloudBaseUrl,
-      localQueue: queue
+      localQueue: queue,
+      linkedDeviceId: wx.getStorageSync(LINKED_DEVICE_KEY) || "",
+      bindingStatus: wx.getStorageSync(LINKED_DEVICE_KEY) ? "已绑定电脑端" : "尚未绑定电脑端"
     })
     this.refreshOptions()
     this.refreshRecent()
@@ -147,6 +161,80 @@ Page({
     const value = event.detail.value
     this.setData({ cloudBaseUrl: value })
     wx.setStorageSync(CLOUD_URL_KEY, value)
+  },
+
+  onLinkCodeInput(event) {
+    this.setData({ linkCode: normalizeLinkCode(event.detail.value) })
+  },
+
+  mobileDeviceId() {
+    let id = wx.getStorageSync(MOBILE_DEVICE_KEY)
+    if (!id) {
+      id = localId()
+      wx.setStorageSync(MOBILE_DEVICE_KEY, id)
+    }
+    return id
+  },
+
+  scanDeviceCode() {
+    wx.scanCode({
+      onlyFromCamera: false,
+      success: (result) => {
+        this.setData({ linkCode: normalizeLinkCode(result.result) })
+      },
+      fail: () => {
+        wx.showToast({ title: "扫码取消或失败", icon: "none" })
+      }
+    })
+  },
+
+  bindDeviceCode() {
+    const base = trimUrl(this.data.cloudBaseUrl)
+    const code = normalizeLinkCode(this.data.linkCode)
+    if (!base) {
+      wx.showToast({ title: "先填写同步地址", icon: "none" })
+      return
+    }
+    if (!code) {
+      wx.showToast({ title: "先输入设备码", icon: "none" })
+      return
+    }
+    this.setData({ binding: true, bindingStatus: "正在绑定电脑端..." })
+    wx.request({
+      url: `${base}/api/device/link`,
+      method: "POST",
+      data: {
+        code,
+        mobile_device_id: this.mobileDeviceId(),
+        mobile_device_name: "penmoji-miniapp"
+      },
+      success: (response) => {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          const error = response.data && response.data.error ? response.data.error : ""
+          const message = {
+            "device code not found": "设备码不存在，请检查后重试",
+            "device code expired": "设备码已过期，请在电脑端重新生成"
+          }[error] || "设备码不可用"
+          this.setData({ bindingStatus: message })
+          return
+        }
+        const link = response.data && response.data.link ? response.data.link : {}
+        const deviceId = response.data.desktop_device_id || link.desktop_device_id || ""
+        if (deviceId) {
+          wx.setStorageSync(LINKED_DEVICE_KEY, deviceId)
+          this.setData({ linkedDeviceId: deviceId, bindingStatus: `已绑定电脑端：${deviceId.slice(0, 8)}` })
+          wx.showToast({ title: "绑定成功", icon: "success" })
+        } else {
+          this.setData({ bindingStatus: "云端未返回设备 ID" })
+        }
+      },
+      fail: () => {
+        this.setData({ bindingStatus: "绑定失败，检查同步地址或网络" })
+      },
+      complete: () => {
+        this.setData({ binding: false })
+      }
+    })
   },
 
   selectType(event) {
@@ -285,6 +373,7 @@ Page({
       source_url: draft.mediaUrl,
       tags: draft.tags,
       capture_intent: draft.captureIntent,
+      target_device_id: this.data.linkedDeviceId,
       client_created_at: draft.createdAt,
       created_at: draft.createdAt
     }

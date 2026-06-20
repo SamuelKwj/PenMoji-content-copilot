@@ -8,13 +8,14 @@ from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 
 CLOUD_VERSION = "0.1.0"
 DATA_ROOT = Path(os.environ.get("CONTENT_WORKBENCH_CLOUD_HOME", Path.home() / ".content-workbench-cloud"))
 QUEUE_PATH = DATA_ROOT / "inspiration_queue.jsonl"
 DEVICES_PATH = DATA_ROOT / "devices.jsonl"
+LINK_CODES_PATH = DATA_ROOT / "link_codes.jsonl"
 
 
 def now_iso() -> str:
@@ -73,7 +74,104 @@ def normalize_inspiration(payload: dict) -> dict:
         "local_path": "",
         "source_url": payload.get("source_url", ""),
         "capture_intent": payload.get("capture_intent", "collect"),
+        "target_device_id": payload.get("target_device_id", ""),
     }
+
+
+def new_link_code() -> str:
+    return uuid.uuid4().hex[:6].upper()
+
+
+def is_expired(value: str) -> bool:
+    if not value:
+        return False
+    try:
+        expires_at = datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    current = datetime.now(expires_at.tzinfo)
+    return current > expires_at
+
+
+def expire_pending_link_codes(items: list[dict]) -> bool:
+    changed = False
+    for item in items:
+        if item.get("status") == "pending" and is_expired(item.get("expires_at", "")):
+            item["status"] = "expired"
+            changed = True
+    return changed
+
+
+def create_link_code(payload: dict, host: str) -> dict:
+    device_id = payload.get("device_id") or str(uuid.uuid4())
+    code = new_link_code()
+    created_at = now_iso()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=20)).astimezone().isoformat(timespec="seconds")
+    scheme = "https" if payload.get("https") else "http"
+    base_url = payload.get("cloud_base_url") or f"{scheme}://{host}"
+    item = {
+        "code": code,
+        "status": "pending",
+        "desktop_device_id": device_id,
+        "desktop_device_name": payload.get("device_name") or "desktop",
+        "mobile_device_id": "",
+        "mobile_device_name": "",
+        "created_at": created_at,
+        "expires_at": expires_at,
+        "linked_at": "",
+        "cloud_base_url": base_url,
+        "link_url": f"{base_url.rstrip('/')}/bind?code={code}",
+    }
+    append_jsonl(LINK_CODES_PATH, item)
+    return item
+
+
+def find_link_code(code: str = "", device_id: str = "") -> dict:
+    items = read_jsonl(LINK_CODES_PATH)
+    if expire_pending_link_codes(items):
+        rewrite_jsonl(LINK_CODES_PATH, items)
+    for item in reversed(items):
+        if code and item.get("code") == code:
+            return item
+        if device_id and item.get("desktop_device_id") == device_id:
+            return item
+    return {}
+
+
+def bind_link_code(payload: dict) -> dict | None:
+    code = (payload.get("code") or "").strip().upper()
+    if not code:
+        return None
+    items = read_jsonl(LINK_CODES_PATH)
+    changed = expire_pending_link_codes(items)
+    linked = None
+    for item in items:
+        if item.get("code") == code:
+            linked = item
+            if item.get("status") != "pending":
+                break
+            item["status"] = "linked"
+            item["mobile_device_id"] = payload.get("mobile_device_id") or str(uuid.uuid4())
+            item["mobile_device_name"] = payload.get("mobile_device_name") or "mobile-miniapp"
+            item["linked_at"] = now_iso()
+            changed = True
+            append_jsonl(
+                DEVICES_PATH,
+                {
+                    "device_id": linked["desktop_device_id"],
+                    "device_name": linked.get("desktop_device_name") or "desktop",
+                    "mobile_device_id": linked.get("mobile_device_id", ""),
+                    "mobile_device_name": linked.get("mobile_device_name", ""),
+                    "linked_at": linked.get("linked_at") or now_iso(),
+                    "link_code": linked.get("code"),
+                },
+            )
+            break
+    if changed:
+        rewrite_jsonl(LINK_CODES_PATH, items)
+    return linked
 
 
 class CloudMockHandler(BaseHTTPRequestHandler):
@@ -92,8 +190,24 @@ class CloudMockHandler(BaseHTTPRequestHandler):
         elif path == "/api/mobile/inspirations/status":
             self.send_json({"items": read_jsonl(QUEUE_PATH)})
         elif path == "/api/desktop/inspirations/pending":
-            items = [item for item in read_jsonl(QUEUE_PATH) if item.get("sync_status") == "pending"]
+            query = parse_qs(parsed.query)
+            device_id = (query.get("device_id") or [""])[0]
+            items = [
+                item
+                for item in read_jsonl(QUEUE_PATH)
+                if item.get("sync_status") == "pending"
+                and (not device_id or not item.get("target_device_id") or item.get("target_device_id") == device_id)
+            ]
             self.send_json({"items": items})
+        elif path == "/api/device/link-status":
+            query = parse_qs(parsed.query)
+            code = (query.get("code") or [""])[0].strip().upper()
+            device_id = (query.get("device_id") or [""])[0].strip()
+            item = find_link_code(code=code, device_id=device_id)
+            if not item:
+                self.send_json({"status": "missing"}, HTTPStatus.NOT_FOUND)
+            else:
+                self.send_json({"status": "ok", "link": item})
         elif path == "/api/account/subscription":
             expires_at = (datetime.now(timezone.utc) + timedelta(days=14)).astimezone().isoformat(timespec="seconds")
             self.send_json(
@@ -124,6 +238,10 @@ class CloudMockHandler(BaseHTTPRequestHandler):
                 return
             append_jsonl(QUEUE_PATH, item)
             self.send_json({"status": "ok", "item": item}, HTTPStatus.CREATED)
+        elif path == "/api/device/link-code":
+            host = self.headers.get("Host") or f"127.0.0.1:{self.server.server_address[1]}"
+            item = create_link_code(payload, host)
+            self.send_json({"status": "ok", "link": item}, HTTPStatus.CREATED)
         elif path == "/api/desktop/inspirations/ack":
             ids = set(payload.get("ids") if isinstance(payload.get("ids"), list) else [])
             items = read_jsonl(QUEUE_PATH)
@@ -134,13 +252,27 @@ class CloudMockHandler(BaseHTTPRequestHandler):
             rewrite_jsonl(QUEUE_PATH, items)
             self.send_json({"status": "ok", "acked": len(ids)})
         elif path == "/api/device/link":
-            device = {
-                "device_id": payload.get("device_id") or str(uuid.uuid4()),
-                "device_name": payload.get("device_name") or "desktop",
-                "linked_at": now_iso(),
-            }
-            append_jsonl(DEVICES_PATH, device)
-            self.send_json({"status": "ok", **device}, HTTPStatus.CREATED)
+            has_code = bool((payload.get("code") or "").strip())
+            if has_code:
+                linked = bind_link_code(payload)
+                if not linked:
+                    self.send_json({"error": "device code not found"}, HTTPStatus.NOT_FOUND)
+                    return
+                if linked.get("status") == "expired":
+                    self.send_json({"error": "device code expired", "link": linked}, HTTPStatus.GONE)
+                    return
+                if linked.get("status") != "linked":
+                    self.send_json({"error": f"device code is {linked.get('status', 'unavailable')}", "link": linked}, HTTPStatus.CONFLICT)
+                    return
+                self.send_json({"status": "ok", "link": linked, "desktop_device_id": linked["desktop_device_id"]}, HTTPStatus.CREATED)
+            else:
+                device = {
+                    "device_id": payload.get("device_id") or str(uuid.uuid4()),
+                    "device_name": payload.get("device_name") or "desktop",
+                    "linked_at": now_iso(),
+                }
+                append_jsonl(DEVICES_PATH, device)
+                self.send_json({"status": "ok", **device}, HTTPStatus.CREATED)
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 

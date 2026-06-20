@@ -15,12 +15,23 @@
 
   <view class="settings-panel" wx:if="{{showSettings}}">
     <view class="section-title">同步设置</view>
-    <view class="helper">正式版会用扫码/设备码绑定；本地调试时保留云端地址。</view>
+    <view class="helper">在电脑端设置里生成绑定码，小程序输入后即可同步到这台电脑。</view>
     <view class="field">
-      <text class="label">Cloud Base URL</text>
+      <text class="label">电脑端设备码</text>
+      <view class="bind-row">
+        <input class="input bind-input" value="{{linkCode}}" bindinput="onLinkCodeInput" placeholder="例如 A1B2C3" />
+        <button class="secondary compact" bindtap="scanDeviceCode">扫码</button>
+      </view>
+    </view>
+    <view class="bind-status">{{bindingStatus}}</view>
+    <view class="action-row settings-actions">
+      <button class="secondary" loading="{{binding}}" bindtap="bindDeviceCode">绑定电脑</button>
+      <button class="secondary" loading="{{loadingStatus}}" bindtap="loadStatus">刷新状态</button>
+    </view>
+    <view class="field dev-field">
+      <text class="label">开发同步地址</text>
       <input class="input" value="{{cloudBaseUrl}}" bindinput="onCloudBaseInput" placeholder="http://127.0.0.1:8787" />
     </view>
-    <button class="secondary compact" loading="{{loadingStatus}}" bindtap="loadStatus">刷新同步状态</button>
   </view>
 
   <view class="panel composer">

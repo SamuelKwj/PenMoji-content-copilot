@@ -963,6 +963,29 @@
       gap: 10px;
     }
 
+    .link-card {
+      margin-top: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+    }
+
+    .link-code {
+      margin-top: 5px;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: 3px;
+    }
+
+    .link-url {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
     @media (max-width: 1120px) {
       .workspace {
         grid-template-columns: 260px minmax(420px, 1fr);
@@ -1174,8 +1197,14 @@
           <h3>手机同步</h3>
           <label for="cloudBase">手机同步地址</label>
           <input id="cloudBase" placeholder="http://127.0.0.1:8787" autocomplete="off">
+          <div class="link-card">
+            <div class="tiny" id="deviceLinkStatus">尚未生成绑定码</div>
+            <div class="link-code" id="deviceLinkCode">------</div>
+            <div class="link-url" id="deviceLinkUrl">小程序端输入设备码即可绑定。正式云端可替换为二维码。</div>
+          </div>
           <div class="quick-row">
-            <button class="secondary" id="linkDevice">绑定本机</button>
+            <button class="secondary" id="linkDevice">生成绑定码</button>
+            <button class="secondary" id="checkDeviceLink">检查绑定</button>
             <button class="secondary" id="pullCloud">拉取手机灵感</button>
           </div>
         </div>
@@ -1270,6 +1299,7 @@
       $("projectPath").value = appConfig.content_project_path || "";
       $("cloudBase").value = appConfig.cloud?.base_url || "";
       $("licenseText").textContent = `授权：${appConfig.license?.status || "trial"}，离线宽限 ${appConfig.license?.offline_grace_days || 7} 天`;
+      renderDeviceLink(appConfig.cloud || {});
     }
 
     async function saveConfig() {
@@ -2173,7 +2203,34 @@
         body: JSON.stringify({ device_name: "desktop-workbench" })
       });
       await loadConfig();
-      showToast(`已绑定设备：${result.device.device_id}`);
+      renderDeviceLink(result.cloud || appConfig.cloud || {});
+      showToast(`绑定码已生成：${result.link.code}`);
+    }
+
+    async function checkDeviceLink() {
+      try {
+        const result = await api("/api/cloud/link-status");
+        await loadConfig();
+        renderDeviceLink(result.cloud || appConfig.cloud || {});
+        showToast(result.link?.status === "linked" ? "小程序已绑定" : "仍在等待小程序输入设备码");
+      } catch (error) {
+        setStatus(`检查绑定失败：${error.message}`, false);
+      }
+    }
+
+    function renderDeviceLink(cloud = {}) {
+      const code = cloud.link_code || "------";
+      const status = cloud.link_status || "";
+      const statusText = {
+        pending: "等待小程序绑定",
+        linked: "已绑定小程序",
+        expired: "绑定码已过期"
+      }[status] || (cloud.device_id ? "已有设备记录" : "尚未生成绑定码");
+      $("deviceLinkCode").textContent = code;
+      $("deviceLinkStatus").textContent = cloud.device_id
+        ? `${statusText} · 设备 ${cloud.device_id.slice(0, 8)}`
+        : statusText;
+      $("deviceLinkUrl").textContent = cloud.link_url || "小程序端输入设备码即可绑定。正式云端可替换为二维码。";
     }
 
     function openSettings() {
@@ -2341,6 +2398,7 @@
     $("testModel").addEventListener("click", testModel);
     $("activateLicense").addEventListener("click", activateLicense);
     $("linkDevice").addEventListener("click", linkDevice);
+    $("checkDeviceLink").addEventListener("click", checkDeviceLink);
     $("loadFiles").addEventListener("click", loadFiles);
     $("pullCloud").addEventListener("click", pullCloud);
     restoreCollapsedState();

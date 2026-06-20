@@ -112,6 +112,11 @@ def default_config() -> dict:
         "cloud": {
             "base_url": "",
             "device_id": "",
+            "link_code": "",
+            "link_url": "",
+            "link_expires_at": "",
+            "link_status": "",
+            "linked_at": "",
             "last_sync_at": "",
         },
         "license": {
@@ -233,6 +238,7 @@ def normalize_inspiration(item: dict, user_id: str = "local-user") -> dict:
         "local_path": item.get("local_path", ""),
         "source_url": item.get("source_url", ""),
         "capture_intent": item.get("capture_intent", "collect"),
+        "target_device_id": item.get("target_device_id", ""),
     }
     for key in (
         "demo",
@@ -516,6 +522,49 @@ def read_cloud_subscription(config: dict) -> dict:
         return cloud_request("GET", base_url, "/api/account/subscription", None)
     except (urllib.error.URLError, json.JSONDecodeError, TimeoutError, OSError):
         return {}
+
+
+def begin_cloud_device_link(config: dict, payload: dict) -> dict:
+    cloud = config.get("cloud", {})
+    base_url = (cloud.get("base_url") or "").strip()
+    if not base_url:
+        raise ValueError("cloud.base_url is required")
+    device_name = payload.get("device_name") or os.environ.get("COMPUTERNAME") or "desktop"
+    requested = {
+        "device_id": cloud.get("device_id") or str(uuid.uuid4()),
+        "device_name": device_name,
+        "cloud_base_url": base_url,
+    }
+    linked = cloud_request("POST", base_url, "/api/device/link-code", requested)
+    link = linked.get("link", linked)
+    config["cloud"]["device_id"] = link.get("desktop_device_id") or requested["device_id"]
+    config["cloud"]["link_code"] = link.get("code", "")
+    config["cloud"]["link_url"] = link.get("link_url", "")
+    config["cloud"]["link_expires_at"] = link.get("expires_at", "")
+    config["cloud"]["link_status"] = link.get("status", "pending")
+    config["cloud"]["linked_at"] = link.get("linked_at", "")
+    save_config(config)
+    return link
+
+
+def read_cloud_link_status(config: dict) -> dict:
+    cloud = config.get("cloud", {})
+    base_url = (cloud.get("base_url") or "").strip()
+    if not base_url:
+        raise ValueError("cloud.base_url is required")
+    query = urlencode({"device_id": cloud.get("device_id", ""), "code": cloud.get("link_code", "")})
+    result = cloud_request("GET", base_url, f"/api/device/link-status?{query}", None)
+    link = result.get("link", result)
+    if link.get("status"):
+        config["cloud"]["link_code"] = link.get("code", cloud.get("link_code", ""))
+        config["cloud"]["link_url"] = link.get("link_url", cloud.get("link_url", ""))
+        config["cloud"]["link_expires_at"] = link.get("expires_at", cloud.get("link_expires_at", ""))
+        config["cloud"]["link_status"] = link.get("status", "")
+        config["cloud"]["linked_at"] = link.get("linked_at", "")
+        if link.get("desktop_device_id"):
+            config["cloud"]["device_id"] = link.get("desktop_device_id")
+        save_config(config)
+    return link
 
 
 def extract_topic(message: str) -> str:
@@ -2000,6 +2049,17 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     "source": license_data.get("source", "local"),
                 }
             )
+        elif path == "/api/cloud/link-status":
+            config = load_config(include_secret=True)
+            try:
+                link = read_cloud_link_status(config)
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            except (urllib.error.URLError, json.JSONDecodeError, TimeoutError, OSError) as exc:
+                self.send_json({"error": f"device link status failed: {exc}"}, HTTPStatus.BAD_GATEWAY)
+                return
+            self.send_json({"status": "ok", "link": link, "cloud": load_config(include_secret=False).get("cloud", {})})
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -2126,20 +2186,15 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             self.send_json({"status": "ok", "item": updated, "reply": reply})
         elif path == "/api/cloud/link-device":
             config = load_config(include_secret=True)
-            cloud = config.get("cloud", {})
-            base_url = (cloud.get("base_url") or "").strip()
-            if not base_url:
-                self.send_json({"error": "cloud.base_url is required"}, HTTPStatus.BAD_REQUEST)
-                return
-            device_name = payload.get("device_name") or os.environ.get("COMPUTERNAME") or "desktop"
             try:
-                linked = cloud_request("POST", base_url, "/api/device/link", {"device_name": device_name})
+                link = begin_cloud_device_link(config, payload)
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
             except (urllib.error.URLError, json.JSONDecodeError, TimeoutError, OSError) as exc:
                 self.send_json({"error": f"device link failed: {exc}"}, HTTPStatus.BAD_GATEWAY)
                 return
-            config["cloud"]["device_id"] = linked.get("device_id", "")
-            save_config(config)
-            self.send_json({"status": "ok", "device": linked})
+            self.send_json({"status": "ok", "link": link, "cloud": load_config(include_secret=False).get("cloud", {})})
         elif path == "/api/sync/inspirations":
             config = load_config(include_secret=True)
             items = payload.get("items") if isinstance(payload.get("items"), list) else []
