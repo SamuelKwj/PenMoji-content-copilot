@@ -225,6 +225,46 @@
       color: #f8fbff;
     }
 
+    html[data-theme="dark"] .chat-log {
+      background:
+        linear-gradient(#151b25, #151b25) padding-box,
+        linear-gradient(180deg, rgba(224, 106, 63, .14), rgba(122, 183, 215, .08)) border-box;
+    }
+
+    html[data-theme="dark"] .starter-hint,
+    html[data-theme="dark"] .title-option {
+      background: #202633;
+      border-color: #3b4657;
+      color: #e7ded5;
+    }
+
+    html[data-theme="dark"] .starter-hint:hover,
+    html[data-theme="dark"] .title-option:hover {
+      background: #283141;
+      border-color: #4d5a70;
+      box-shadow: none;
+    }
+
+    html[data-theme="dark"] .title-option.active,
+    html[data-theme="dark"] .chat-material-chip {
+      background: rgba(224, 106, 63, .13);
+      border-color: rgba(224, 106, 63, .42);
+      color: #f3eee8;
+    }
+
+    html[data-theme="dark"] .score-pill.pending {
+      background: #202633;
+      color: var(--muted);
+      border-color: #465164;
+    }
+
+    html[data-theme="dark"] .toast {
+      background: #202633;
+      border-color: #465164;
+      color: var(--text);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, .36);
+    }
+
     .app {
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
