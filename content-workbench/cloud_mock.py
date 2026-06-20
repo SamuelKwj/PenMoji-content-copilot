@@ -67,10 +67,12 @@ def normalize_inspiration(payload: dict) -> dict:
         "content": payload.get("content", ""),
         "media_url": payload.get("media_url", ""),
         "tags": tags,
-        "created_at": payload.get("created_at") or now_iso(),
+        "created_at": payload.get("created_at") or payload.get("client_created_at") or now_iso(),
+        "client_created_at": payload.get("client_created_at", ""),
         "sync_status": "pending",
         "local_path": "",
         "source_url": payload.get("source_url", ""),
+        "capture_intent": payload.get("capture_intent", "collect"),
     }
 
 

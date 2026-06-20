@@ -3,10 +3,10 @@
     "pages/index/index"
   ],
   "window": {
-    "navigationBarTitleText": "灵感收集",
-    "navigationBarBackgroundColor": "#0f766e",
-    "navigationBarTextStyle": "white",
-    "backgroundColor": "#f6f7f9"
+    "navigationBarTitleText": "PenMoji",
+    "navigationBarBackgroundColor": "#fffaf6",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f3ef"
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"

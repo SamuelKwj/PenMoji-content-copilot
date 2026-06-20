@@ -227,10 +227,12 @@ def normalize_inspiration(item: dict, user_id: str = "local-user") -> dict:
         "content": item.get("content", ""),
         "media_url": item.get("media_url", ""),
         "tags": tags,
-        "created_at": item.get("created_at") or now_iso(),
+        "created_at": item.get("created_at") or item.get("client_created_at") or now_iso(),
+        "client_created_at": item.get("client_created_at", ""),
         "sync_status": item.get("sync_status") or "pulled",
         "local_path": item.get("local_path", ""),
         "source_url": item.get("source_url", ""),
+        "capture_intent": item.get("capture_intent", "collect"),
     }
     for key in (
         "demo",

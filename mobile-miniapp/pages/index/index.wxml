@@ -1,50 +1,137 @@
-﻿<view class="page">
-  <view class="panel">
-    <view class="title">手机灵感入口</view>
-    <view class="subtitle">只负责收集和同步，完整生产在电脑端完成。</view>
+<view class="page">
+  <view class="hero">
+    <view>
+      <view class="eyebrow">PenMoji</view>
+      <view class="title">别墨迹，先记下来</view>
+      <view class="subtitle">灵感、链接、评论区观察，先收进电脑端火花看板。</view>
+    </view>
+    <button class="settings-button" bindtap="toggleSettings">设置</button>
+  </view>
 
+  <view class="status-strip {{summaryTone}}">
+    <text>{{summaryText}}</text>
+    <button wx:if="{{retryCount}}" class="inline-button" loading="{{syncingQueue}}" bindtap="retryPending">重试</button>
+  </view>
+
+  <view class="settings-panel" wx:if="{{showSettings}}">
+    <view class="section-title">同步设置</view>
+    <view class="helper">正式版会用扫码/设备码绑定；本地调试时保留云端地址。</view>
     <view class="field">
       <text class="label">Cloud Base URL</text>
-      <input class="input" value="{{cloudBaseUrl}}" bindinput="onCloudBaseInput" placeholder="https://your-cloud.example.com" />
+      <input class="input" value="{{cloudBaseUrl}}" bindinput="onCloudBaseInput" placeholder="http://127.0.0.1:8787" />
     </view>
+    <button class="secondary compact" loading="{{loadingStatus}}" bindtap="loadStatus">刷新同步状态</button>
+  </view>
 
-    <view class="field">
-      <text class="label">类型</text>
-      <picker range="{{types}}" value="{{typeIndex}}" bindchange="onTypeChange">
-        <view class="picker">{{types[typeIndex]}}</view>
-      </picker>
+  <view class="panel composer">
+    <view class="section-title">快速收录</view>
+
+    <view class="chip-row">
+      <button
+        wx:for="{{captureTypes}}"
+        wx:key="key"
+        class="chip {{item.active ? 'active' : ''}}"
+        data-key="{{item.key}}"
+        bindtap="selectType"
+      >{{item.label}}</button>
     </view>
 
     <view class="field">
       <text class="label">灵感内容</text>
-      <textarea class="textarea" value="{{content}}" bindinput="onContentInput" placeholder="随手记下一个选题、标题、链接说明或评论区观察" />
+      <textarea
+        class="textarea"
+        maxlength="1200"
+        value="{{content}}"
+        bindinput="onContentInput"
+        placeholder="一句话也行：选题、标题、评论区观察、素材为什么值得留..."
+      />
+      <view class="counter">{{content.length}} / 1200</view>
     </view>
 
     <view class="field">
-      <text class="label">媒体/链接 URL</text>
-      <input class="input" value="{{mediaUrl}}" bindinput="onMediaUrlInput" placeholder="可选" />
+      <text class="label">链接或素材地址</text>
+      <input class="input" value="{{mediaUrl}}" bindinput="onMediaUrlInput" placeholder="粘贴抖音/小红书/网页链接，可选" />
     </view>
 
     <view class="field">
-      <text class="label">标签，逗号分隔</text>
-      <input class="input" value="{{tagsText}}" bindinput="onTagsInput" placeholder="选题,个人IP,待验证" />
+      <view class="label-row">
+        <text class="label">标签</text>
+        <text class="hint">点一下就选中</text>
+      </view>
+      <view class="chip-row">
+        <button
+          wx:for="{{tagOptions}}"
+          wx:key="label"
+          class="chip small {{item.active ? 'active' : ''}}"
+          data-tag="{{item.label}}"
+          bindtap="toggleTag"
+        >{{item.label}}</button>
+      </view>
+      <view class="custom-tag-row">
+        <input class="input tag-input" value="{{customTag}}" bindinput="onCustomTagInput" placeholder="自定义标签" />
+        <button class="secondary compact" bindtap="addCustomTag">添加</button>
+      </view>
+      <view class="selected-tags" wx:if="{{customTags.length}}">
+        <button
+          wx:for="{{customTags}}"
+          wx:key="*this"
+          class="tag-pill"
+          data-tag="{{item}}"
+          bindtap="removeCustomTag"
+        >{{item}} ×</button>
+      </view>
     </view>
 
-    <button class="primary" loading="{{submitting}}" bindtap="submitInspiration">提交灵感</button>
-    <button class="secondary" loading="{{loadingStatus}}" bindtap="loadStatus">查看同步状态</button>
+    <view class="field">
+      <view class="label-row">
+        <text class="label">到电脑端后</text>
+        <text class="hint">先给它一个处理意图</text>
+      </view>
+      <view class="chip-row">
+        <button
+          wx:for="{{captureIntents}}"
+          wx:key="key"
+          class="chip {{item.active ? 'active' : ''}}"
+          data-key="{{item.key}}"
+          bindtap="selectIntent"
+        >{{item.label}}</button>
+      </view>
+    </view>
+
+    <view class="action-row">
+      <button class="secondary" bindtap="saveDraftOnly">存草稿</button>
+      <button class="primary" loading="{{submitting}}" bindtap="submitInspiration">{{submitButtonText}}</button>
+    </view>
   </view>
 
   <view class="panel">
-    <view class="title small">最近状态</view>
-    <block wx:if="{{items.length}}">
-      <view class="item" wx:for="{{items}}" wx:key="id">
+    <view class="panel-head">
+      <view>
+        <view class="section-title">最近灵感</view>
+        <view class="helper">失败不会丢，会留在本机待重试。</view>
+      </view>
+      <button class="secondary compact" loading="{{loadingStatus}}" bindtap="loadStatus">刷新</button>
+    </view>
+
+    <block wx:if="{{recentItems.length}}">
+      <view class="item" wx:for="{{recentItems}}" wx:key="localId">
         <view class="item-head">
-          <text>{{item.type}}</text>
-          <text class="status">{{item.sync_status}}</text>
+          <text class="item-type">{{item.typeLabel}}</text>
+          <text class="status {{item.statusTone}}">{{item.statusText}}</text>
         </view>
-        <view class="item-content">{{item.content || item.media_url}}</view>
+        <view class="item-content">{{item.preview}}</view>
+        <view class="item-meta">
+          <text>{{item.intentLabel}}</text>
+          <text>{{item.createdLabel}}</text>
+        </view>
+        <view class="tag-line" wx:if="{{item.tagsText}}">{{item.tagsText}}</view>
+        <view class="item-actions">
+          <button wx:if="{{item.canEdit}}" class="text-button" data-id="{{item.localId}}" bindtap="editDraft">编辑</button>
+          <button wx:if="{{item.canRetry}}" class="text-button" data-id="{{item.localId}}" bindtap="retryOne">重试</button>
+          <button wx:if="{{item.canDelete}}" class="text-button danger" data-id="{{item.localId}}" bindtap="deleteLocalItem">移除本地</button>
+        </view>
       </view>
     </block>
-    <view wx:else class="empty">还没有同步记录。</view>
+    <view wx:else class="empty">还没有灵感。先记一句，别让它跑掉。</view>
   </view>
 </view>

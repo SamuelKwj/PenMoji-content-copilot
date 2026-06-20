@@ -1731,7 +1731,7 @@
         items = inboxItems.filter((item) => item.sync_status !== "processed").map((item) => ({
           label: typeLabel(item.type),
           content: item.content || item.media_url || "(empty)",
-          note: statusLabel(item.sync_status)
+          note: [statusLabel(item.sync_status), captureIntentLabel(item.capture_intent)].filter(Boolean).join(" · ")
         }));
       } else if (materialTab === "mobile") {
         items = [
@@ -2248,6 +2248,16 @@
         processed: "已处理",
         local: "本次输入"
       }[status] || "待处理";
+    }
+
+    function captureIntentLabel(intent) {
+      return {
+        collect: "只收录",
+        score: "先评分",
+        review: "先审核",
+        script: "写脚本",
+        publish_copy: "发布文案"
+      }[intent] || "";
     }
 
     function escapeHtml(text) {
