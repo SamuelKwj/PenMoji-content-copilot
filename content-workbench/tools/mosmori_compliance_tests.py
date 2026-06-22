@@ -240,12 +240,20 @@ def run() -> dict:
         ))
         fixed_paths = {
             "manifest": expected_topic_dir / "manifest.json",
+            "ledger": expected_topic_dir / "ledger.json",
             "script": expected_topic_dir / "script" / "script.md",
             "prediction": expected_topic_dir / "prediction" / "prediction.md",
             "publish": expected_topic_dir / "publish" / "publish.md",
             "retro": expected_topic_dir / "retro" / "retro.md",
         }
         results.append(expect(all(path.exists() for path in fixed_paths.values()), "artifacts:topic-fixed-paths", str(fixed_paths)))
+        ledger = json.loads(fixed_paths["ledger"].read_text(encoding="utf-8")) if fixed_paths["ledger"].exists() else {}
+        ledger_artifacts = ledger.get("artifacts", {})
+        results.append(expect(ledger.get("flow_id") == wb.hashlib.sha256("普通人做内容前如何判断入口".encode("utf-8")).hexdigest()[:12] and ledger.get("topic") == "普通人做内容前如何判断入口", "ledger:identity", json.dumps(ledger, ensure_ascii=False)[:800]))
+        for key in ["review", "score", "prediction"]:
+            results.append(expect(key in ledger_artifacts and Path(ledger_artifacts.get(key, {}).get("path", "")).exists(), f"ledger:artifact:{key}", json.dumps(ledger_artifacts.get(key, {}), ensure_ascii=False)[:500]))
+        results.append(expect(ledger.get("status") in {"reviewed", "scored", "predicted", "scripted", "published", "retrospected"} and bool(ledger.get("next_step")), "ledger:status-next-step", json.dumps(ledger, ensure_ascii=False)[:800]))
+        results.append(expect(any(event.get("event") == "prediction_generated" for event in ledger.get("history", [])), "ledger:history-prediction-event", json.dumps(ledger.get("history", []), ensure_ascii=False)[:800]))
         llm_artifacts = [Path(item.get("path", "")) for item in [*prediction_artifacts, *review_artifacts, *score_artifacts] if item.get("type") == "llm_output"]
         results.append(expect(all(path.parent.name == "llm-output" for path in llm_artifacts), "artifacts:llm-output-history-subdir", str(llm_artifacts)))
         forbidden_reply_tokens = ["当前阶段", "当前步骤", "本次阶段", "stage:", "stage："]
@@ -267,30 +275,59 @@ def run() -> dict:
         panel_sections = topic_panel.get("sections", {})
         results.append(expect(topic_panel.get("status") == "ok" and all(key in panel_sections for key in ["script", "prediction", "publish", "retro"]), "topic-panel:fixed-sections", str(topic_panel)[:800]))
         results.append(expect("普通人做内容前如何判断入口" in panel_sections.get("prediction", {}).get("content", ""), "topic-panel:prediction-bound-to-file", panel_sections.get("prediction", {})))
+        panel_ledger = topic_panel.get("ledger", {})
+        results.append(expect(panel_ledger.get("flow_id") == score_route.get("flow_id") and "score" in panel_ledger.get("artifacts", {}), "topic-panel:ledger-returned", json.dumps(panel_ledger, ensure_ascii=False)[:800]))
         run_items = wb.read_workflow_runs()
         prediction_run = run_items[-1] if run_items else {}
         results.append(expect(bool(prediction_run.get("immutable_prediction")), "predict:immutable-run", str(prediction_run)))
         before_hash = prediction_run.get("prediction_hash")
-        wb.generate_retro(
-            {
-                "flow_id": prediction_run.get("flow_id"),
-                "topic": prediction_run.get("flow_topic"),
-                "metrics": {"views": 10000, "likes": 500, "comments": 80},
-            },
+        before_prediction_text = fixed_paths["prediction"].read_text(encoding="utf-8") if fixed_paths["prediction"].exists() else ""
+        publish_reply = wb.local_agent_reply(
+            "发布登记：选题：普通人做内容前如何判断入口，平台抖音，链接 https://v.douyin.com/test123，发布时间 2026-06-22 20:30",
             config,
         )
+        publish_artifacts = [Path(item.get("path", "")) for item in publish_reply.get("result", {}).get("artifacts", []) if item.get("type") == "publish_record"]
+        publish_ledger = json.loads(fixed_paths["ledger"].read_text(encoding="utf-8")) if fixed_paths["ledger"].exists() else {}
+        results.append(expect(publish_reply.get("stage") == "publish_registration" and bool(publish_artifacts) and publish_artifacts[0] == fixed_paths["publish"] and publish_artifacts[0].exists(), "publish:writes-fixed-file", json.dumps(publish_reply, ensure_ascii=False)[:800]))
+        results.append(expect(publish_ledger.get("status") == "published" and publish_ledger.get("next_step") == "retro" and "publish_record" in publish_ledger.get("artifacts", {}), "publish:updates-ledger-status", json.dumps(publish_ledger, ensure_ascii=False)[:800]))
+        results.append(expect("https://v.douyin.com/test123" in fixed_paths["publish"].read_text(encoding="utf-8") and "2026-06-22 20:30" in fixed_paths["publish"].read_text(encoding="utf-8"), "publish:records-url-time", fixed_paths["publish"].read_text(encoding="utf-8")[:800]))
+        retro_reply = wb.local_agent_reply(
+            "复盘这个选题：普通人做内容前如何判断入口，播放 10000，点赞 500，评论 80，收藏 120",
+            config,
+        )
+        retro_artifacts = [Path(item.get("path", "")) for item in retro_reply.get("result", {}).get("artifacts", []) if item.get("type") == "retro"]
         after_run = wb.find_latest_workflow_run(flow_id=prediction_run.get("flow_id"))
-        results.append(expect(after_run.get("prediction_hash") == before_hash, "retro:does-not-mutate-prediction", str(after_run)))
+        retro_ledger = json.loads(fixed_paths["ledger"].read_text(encoding="utf-8")) if fixed_paths["ledger"].exists() else {}
+        results.append(expect(after_run.get("prediction_hash") == before_hash and fixed_paths["prediction"].read_text(encoding="utf-8") == before_prediction_text, "retro:does-not-mutate-prediction", str(after_run)))
+        results.append(expect(retro_reply.get("stage") == "retro" and bool(retro_artifacts) and retro_artifacts[0] == fixed_paths["retro"] and retro_artifacts[0].exists(), "retro:writes-fixed-file", json.dumps(retro_reply, ensure_ascii=False)[:800]))
+        results.append(expect(retro_ledger.get("status") == "retrospected" and retro_ledger.get("next_step") == "review_score_rules" and "retro" in retro_ledger.get("artifacts", {}), "retro:updates-ledger-status", json.dumps(retro_ledger, ensure_ascii=False)[:800]))
+        results.append(expect("播放：10000" in fixed_paths["retro"].read_text(encoding="utf-8") and "点赞：500" in fixed_paths["retro"].read_text(encoding="utf-8") and "收藏：120" in fixed_paths["retro"].read_text(encoding="utf-8"), "retro:metrics-recorded", fixed_paths["retro"].read_text(encoding="utf-8")[:800]))
+        topic_panel_after_retro = wb.topic_panel_payload(config, flow_id=score_route.get("flow_id", ""), topic="普通人做内容前如何判断入口")
+        panel_ledger_after_retro = topic_panel_after_retro.get("ledger", {})
+        results.append(expect(panel_ledger_after_retro.get("status") == "retrospected" and panel_ledger_after_retro.get("next_step") == "review_score_rules", "topic-panel:retrospected-status", json.dumps(panel_ledger_after_retro, ensure_ascii=False)[:800]))
 
         static_text = (APP_ROOT / "static" / "index.html").read_text(encoding="utf-8")
-        for token in ["modelStatusText", "modelTestResult", "answer_source", "demoView = false", "stage === \"chat\"", "conversationList", "newConversation", "deleteConversation", "renameConversation", "data-rename-conversation", "activeConversationId", "loadConversations", "leftWorkflowPanel", "spark-row", "spark-index", "spark-title-marquee", "spark-title-track", "spark-title-marquee-scroll", "spark-score-fixed", "topicPanel", "topicScriptContent", "topicPredictionContent", "topicPublishContent", "topicRetroContent", "loadTopicPanel", "/api/topic"]:
+        for token in ["modelStatusText", "modelTestResult", "answer_source", "demoView = false", "stage === \"chat\"", "conversationList", "newConversation", "deleteConversation", "renameConversation", "data-rename-conversation", "activeConversationId", "loadConversations", "leftWorkflowPanel", "spark-row", "spark-index", "spark-title-marquee", "spark-title-track", "spark-title-marquee-scroll", "spark-score-fixed", "topicPanel", "topicStatus", "topicNextStep", "renderTopicLedger", "topicScriptContent", "topicPredictionContent", "topicPublishContent", "topicRetroContent", "loadTopicPanel", "/api/topic"]:
             results.append(expect(token in static_text, f"frontend:{token}", token))
         results.append(expect("当前阶段：" not in static_text, "frontend:no-mechanical-stage-label", "当前阶段 should not be rendered in replies"))
         results.append(expect("conversation-panel" not in static_text, "frontend:no-center-conversation-panel", "conversation management should live in the left sidebar"))
         left_anchor = static_text.find('id="leftWorkflowPanel"')
         spark_anchor = static_text.find('id="sparkBoard"')
         chat_anchor = static_text.find('class="panel chat-panel"')
+        topic_anchor = static_text.find('id="topicPanel"')
+        output_anchor = static_text.find('id="outputPanel"')
         results.append(expect(left_anchor >= 0 and spark_anchor > left_anchor and chat_anchor > spark_anchor, "frontend:left-sidebar-conversation-before-chat", f"left={left_anchor}; spark={spark_anchor}; chat={chat_anchor}"))
+        results.append(expect(topic_anchor >= 0 and output_anchor > topic_anchor, "frontend:topic-panel-before-output-panel", f"topic={topic_anchor}; output={output_anchor}"))
+        removed_subtitles = [
+            "别墨迹，把灵感写成可发布内容。",
+            "内容形态、平台、赛道、人设都直接在对话里说。",
+            "点击素材，会带标签进入对话框。",
+            "已生成内容会沉淀在这里。",
+            "点选题后显示稿件、预测、发布、复盘。",
+            "新建 / 切换 / 删除",
+        ]
+        leaked_subtitles = [item for item in removed_subtitles if item in static_text]
+        results.append(expect(not leaked_subtitles, "frontend:no-extra-subtitle-copy", str(leaked_subtitles)))
         results.append(expect("composerFocused = true;" in static_text and "blur();" not in static_text, "frontend:composer-stays-expanded", "composer should stay open after send"))
 
         prompt_path = APP_ROOT / "prompts" / "content_creator_workflow.md"
@@ -332,12 +369,36 @@ def run() -> dict:
             route = wb.skill_route_for_deliverable(deliverable)
             results.append(expect((route.get("skill"), route.get("prompt_file")) == expected, f"skill-registry:route:{deliverable}", str(route)))
 
+        executor_config = dict(config)
+        executor_config["api_key"] = "SHOULD_NOT_LEAK_EXECUTOR_SECRET"
+        executor_config["api_base_url"] = ""
+        executor_cases = [
+            ("抖音审稿：保证你一定月入十万，加我微信", "douyin_review", "douyin_content_review", "douyin-content-review.md"),
+            ("优化开头：普通人做个人IP为什么半途而废", "hook_review", "hook_review", "hook-review.md"),
+            ("去AI味：综上所述，因此我们要赋能用户", "humanized_copy", "humanizer", "humanizer.md"),
+        ]
+        for message, deliverable, skill_name, prompt_file in executor_cases:
+            reply = wb.local_agent_reply(message, executor_config)
+            meta = reply.get("result", {}).get("skill_meta", {}).get(deliverable, {})
+            route = meta.get("skill_route", {})
+            run_path_value = meta.get("run_path", "")
+            run_path = Path(run_path_value) if run_path_value else Path("__missing_skill_executor_run__")
+            run = json.loads(run_path.read_text(encoding="utf-8")) if run_path_value and run_path.exists() and run_path.is_file() else {}
+            run_text = json.dumps(run, ensure_ascii=False)
+            artifact_paths = [Path(item.get("path", "")) for item in reply.get("result", {}).get("artifacts", []) if item.get("type") == deliverable]
+            results.append(expect(route.get("skill") == skill_name and route.get("prompt_file") == prompt_file, f"skill-executor:route:{deliverable}", json.dumps(meta, ensure_ascii=False)[:800]))
+            results.append(expect(meta.get("llm_attempted") is True and meta.get("fallback_used") is True and meta.get("output_source") == "local_fallback", f"skill-executor:fallback-visible:{deliverable}", json.dumps(meta, ensure_ascii=False)[:800]))
+            results.append(expect(run_path.exists() and run.get("llm_call", {}).get("message_count") == 2 and prompt_file in run_text, f"skill-executor:run-record:{deliverable}", run_text[:800]))
+            results.append(expect("SHOULD_NOT_LEAK_EXECUTOR_SECRET" not in run_text and "api_key" not in run_text and "api_base_url" not in run_text, f"skill-executor:no-secret-leak:{deliverable}", run_text[:800]))
+            results.append(expect(bool(artifact_paths) and artifact_paths[0].exists() and artifact_paths[0].parent.parent.name.startswith(wb.hashlib.sha256(wb.extract_topic(message).encode("utf-8")).hexdigest()[:12]), f"skill-executor:artifact-written-to-topic:{deliverable}", str(artifact_paths)))
+
         main_text = MAIN_PATH.read_text(encoding="utf-8")
         architecture_modules = [
             APP_ROOT / "agent" / "intent.py",
             APP_ROOT / "agent" / "state.py",
             APP_ROOT / "agent" / "prompt_builder.py",
             APP_ROOT / "agent" / "skill_registry.py",
+            APP_ROOT / "agent" / "skill_executor.py",
             APP_ROOT / "agent" / "hidden_agent.py",
             APP_ROOT / "model" / "llm.py",
             APP_ROOT / "storage" / "conversations.py",
@@ -349,7 +410,7 @@ def run() -> dict:
         ]
         missing_architecture_modules = [str(path.relative_to(APP_ROOT)) for path in architecture_modules if not path.exists()]
         results.append(expect(not missing_architecture_modules, "architecture:layer-modules-exist", str(missing_architecture_modules)))
-        for token in ["from agent.prompt_builder", "from agent.state", "from model.llm", "from storage.conversations", "from workflow.spark"]:
+        for token in ["from agent.prompt_builder", "from agent.state", "from agent.skill_executor", "from model.llm", "from storage.conversations", "from workflow.spark"]:
             results.append(expect(token in main_text, f"architecture:main-imports:{token}", token))
 
         audit_path = APP_ROOT / "docs" / "capability-coverage-audit.md"

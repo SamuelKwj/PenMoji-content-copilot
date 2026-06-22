@@ -1177,7 +1177,6 @@
         </div>
         <div class="brand-copy">
           <h1>PenMoji</h1>
-          <p class="muted">别墨迹，把灵感写成可发布内容。</p>
         </div>
       </div>
       <div class="top-actions">
@@ -1209,7 +1208,6 @@
             <div class="sidebar-section">
               <div class="sidebar-section-head">
                 <h3>对话</h3>
-                <span class="tiny">新建 / 切换 / 删除</span>
               </div>
               <div class="conversation-list" id="conversationList"></div>
             </div>
@@ -1229,7 +1227,6 @@
           <div class="panel-head">
             <div>
               <h2>引导对话</h2>
-              <p class="muted">内容形态、平台、赛道、人设都直接在对话里说。</p>
             </div>
           </div>
           <div class="chat-log" id="chatLog">
@@ -1267,7 +1264,6 @@
           <div class="panel-head">
             <div>
               <h2>素材选择</h2>
-              <p class="muted">点击素材，会带标签进入对话框。</p>
             </div>
             <div class="panel-actions">
               <div class="tabs-lite">
@@ -1284,27 +1280,14 @@
           </div>
         </section>
 
-        <section class="panel" id="outputPanel">
-          <div class="panel-head">
-            <div>
-              <h2>产出看板</h2>
-              <p class="muted" id="outputScopeText">已生成内容会沉淀在这里。</p>
-            </div>
-            <div class="panel-actions">
-              <button class="secondary" id="loadFiles">刷新</button>
-              <button class="secondary section-toggle" id="toggleOutputSection" type="button" aria-expanded="true">折叠</button>
-            </div>
-          </div>
-          <div class="panel-body">
-            <div class="output-board" id="outputBoard"></div>
-          </div>
-        </section>
-
         <section class="panel" id="topicPanel">
           <div class="panel-head">
             <div>
               <h2>选题面板</h2>
-              <p class="muted" id="topicPanelScopeText">点选题后显示稿件、预测、发布、复盘。</p>
+              <div class="topic-ledger-strip">
+                <span id="topicStatus">状态：未选择</span>
+                <span id="topicNextStep">下一步：选择选题</span>
+              </div>
             </div>
             <div class="panel-actions">
               <button class="secondary" id="refreshTopicPanel" type="button">刷新</button>
@@ -1327,6 +1310,21 @@
               <h3>复盘</h3>
               <pre id="topicRetroContent">尚未选择选题。</pre>
             </article>
+          </div>
+        </section>
+
+        <section class="panel" id="outputPanel">
+          <div class="panel-head">
+            <div>
+              <h2>产出看板</h2>
+            </div>
+            <div class="panel-actions">
+              <button class="secondary" id="loadFiles">刷新</button>
+              <button class="secondary section-toggle" id="toggleOutputSection" type="button" aria-expanded="true">折叠</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="output-board" id="outputBoard"></div>
           </div>
         </section>
       </aside>
@@ -2161,11 +2159,40 @@
       if (materialTab === "files") renderMaterialList();
     }
 
+    function renderTopicLedger(ledger = {}) {
+      const statusNode = $("topicStatus");
+      const nextNode = $("topicNextStep");
+      const statusLabels = {
+        new: "未开始",
+        updated: "已更新",
+        drafted: "已固化",
+        reviewed: "已审稿",
+        scored: "已打分",
+        predicted: "已预测",
+        scripted: "已成稿",
+        published: "已发布",
+        retrospected: "已复盘",
+      };
+      const nextLabels = {
+        score: "打分",
+        prediction: "预测",
+        write_script: "写口播稿",
+        publish: "登记发布",
+        retro: "T+3复盘",
+        review_score_rules: "更新评分规则",
+        continue: "继续处理",
+      };
+      const status = ledger.status || "new";
+      const next = ledger.next_step || "score";
+      if (statusNode) statusNode.textContent = `状态：${statusLabels[status] || status}`;
+      if (nextNode) nextNode.textContent = `下一步：${nextLabels[next] || next}`;
+    }
+
     function renderTopicPanel(data = {}) {
       const scope = $("topicPanelScopeText");
       const sections = data.sections || {};
       if (!data.status || data.status !== "ok") {
-        if (scope) scope.textContent = "点选题后显示稿件、预测、发布、复盘。";
+        renderTopicLedger({});
         ["topicScriptContent", "topicPredictionContent", "topicPublishContent", "topicRetroContent"].forEach((id) => {
           const node = $(id);
           if (node) node.textContent = "尚未选择选题。";
@@ -2173,6 +2200,7 @@
         return;
       }
       if (scope) scope.textContent = `当前选题：${data.topic || activeOutputContext?.topic || "未命名"}`;
+      renderTopicLedger(data.ledger || {});
       const mapping = {
         topicScriptContent: sections.script,
         topicPredictionContent: sections.prediction,

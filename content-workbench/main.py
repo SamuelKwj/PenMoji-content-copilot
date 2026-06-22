@@ -23,6 +23,7 @@ if str(_IMPORT_ROOT) not in sys.path:
 
 from agent.hidden_agent import run_hidden_agent
 from agent.prompt_builder import build_workflow_system_prompt_text, load_workflow_prompt_file
+from agent.skill_executor import run_skill_executor
 from agent.skill_registry import skill_route_for_deliverable as registry_skill_route_for_deliverable
 from agent.skill_registry import skill_route_with_prompt
 from agent.state import default_session_state as default_session_state_model
@@ -455,12 +456,20 @@ def topic_panel_payload(config: dict, flow_id: str = "", topic: str = "") -> dic
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             manifest = {}
+    ledger_path = target / "ledger.json"
+    ledger = {}
+    if ledger_path.exists():
+        try:
+            ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            ledger = {}
     return {
         "status": "ok",
         "topic_dir": str(target),
-        "flow_id": flow_id or manifest.get("flow_id", ""),
-        "topic": topic or manifest.get("topic", ""),
+        "flow_id": flow_id or manifest.get("flow_id", "") or ledger.get("flow_id", ""),
+        "topic": topic or manifest.get("topic", "") or ledger.get("topic", ""),
         "manifest": manifest,
+        "ledger": ledger,
         "sections": sections,
     }
 
@@ -509,6 +518,8 @@ def route_deliverables(message: str) -> tuple[str, list[str]]:
         (r"^(更新受众画像|构造受众画像|我的观众是谁|刷新受众画像|persona)", "capability_persona", ["persona_report"]),
         (r"^(升级评分规则|更新公式|调整权重|重校桶|bump)", "capability_score_rules", ["score_rules_bump"]),
         (r"^(拍了|已拍|录完了|shot)", "capability_shoot", ["shoot_record"]),
+        (r"^(发布登记|登记发布|已发布|发出去了|发布了)", "publish_registration", ["publish_record"]),
+        (r"^(复盘这个选题|复盘这个灵感|复盘|生成复盘|T\+3复盘|t\+3复盘)", "retro", ["retro"]),
         (r"^(抖音审稿|检查限流|限流审稿|防违规|合规审核)", "capability_douyin_review", ["douyin_review"]),
         (r"^(优化开头|开头怎么写|hook|前3秒|前三秒)", "capability_hook", ["hook_review"]),
         (r"^(去AI味|去 AI 味|改得像人写|humanize|润色成人话)", "capability_humanizer", ["humanized_copy"]),
@@ -539,9 +550,13 @@ def route_deliverables(message: str) -> tuple[str, list[str]]:
         deliverables.append("douyin_review")
     if any(token in text for token in ["优化开头", "前3秒", "前三秒", "hook"]):
         deliverables.append("hook_review")
+    if any(token in text for token in ["发布登记", "登记发布", "已发布", "发出去了", "发布了"]):
+        deliverables.append("publish_record")
+    if any(token in text for token in ["复盘", "实际数据", "后台数据"]):
+        deliverables.append("retro")
     if any(token in text for token in ["评分", "打分", "分数"]):
         deliverables.append("score")
-    if any(token in text for token in ["预测", "预判", "爆款", "播放"]):
+    if "retro" not in deliverables and any(token in text for token in ["预测", "预判", "爆款", "播放"]):
         deliverables.append("prediction")
     if any(token in text for token in ["脚本", "口播脚本", "口播稿"]):
         deliverables.append("video_script")
@@ -720,6 +735,7 @@ def extract_topic(message: str) -> str:
         r"^(帮我|请|给我|做一个|做个|生成|写一个|写个)",
         r"^(看看|分析|优化|评价)",
         r"^(全套物料|全套|完整流程|完整|做成视频|成片)",
+        r"^(发布登记|登记发布|已发布|发出去了|发布了|复盘这个选题|复盘这个灵感|复盘|生成复盘|T\+3复盘|t\+3复盘)",
         r"^(固化灵感|固化这个灵感|审核这个灵感|审核这个选题|给这个选题评分|给这个灵感评分|打分这个选题|打分这个灵感|评分这个选题|评分这个灵感)",
         r"^(预测这个选题|预测这个灵感|打分这个选题|打分这个灵感|评分这个选题|评分这个灵感|写视频脚本|生成静态页文案|生成静态页|标题封面句|标题|发布文案)",
     ]
@@ -1759,6 +1775,39 @@ def render_static_page(topic: str) -> str:
 """
 
 
+
+def execute_skill_deliverable(deliverable: str, topic: str, config: dict, fallback_text: str) -> tuple[str, dict]:
+    route = skill_route_with_prompt(APP_ROOT, deliverable)
+    if not route:
+        return fallback_text, {}
+    run = run_skill_executor(
+        skill_route=route,
+        input_text=topic,
+        project_path=project_path_from_config(config),
+        config=config,
+        llm_callback=call_openai_chat,
+    )
+    output = str(run.get("output") or "").strip()
+    used_output = output or fallback_text
+    meta = {
+        "skill_route": {key: value for key, value in route.items() if key != "prompt"},
+        "run_id": run.get("id", ""),
+        "run_path": run.get("run_path", ""),
+        "llm_attempted": bool(run.get("llm_call", {}).get("attempted")),
+        "llm_note": run.get("llm_call", {}).get("note", ""),
+        "fallback_used": not bool(output),
+        "output_source": "skill_llm" if output else "local_fallback",
+    }
+    return used_output, meta
+
+
+def execute_skill_deliverables(topic: str, rendered: dict[str, str], deliverables: list[str], config: dict) -> dict[str, dict]:
+    skill_meta: dict[str, dict] = {}
+    for deliverable in ["douyin_review", "hook_review", "humanized_copy"]:
+        if deliverable in deliverables and deliverable in rendered:
+            rendered[deliverable], skill_meta[deliverable] = execute_skill_deliverable(deliverable, topic, config, rendered[deliverable])
+    return skill_meta
+
 def render_deliverables(topic: str, deliverables: list[str], config: dict) -> dict[str, str]:
     renderers = {
         "init_state": lambda: render_init_state(topic, config),
@@ -1788,6 +1837,98 @@ def render_deliverables(topic: str, deliverables: list[str], config: dict) -> di
     return {key: renderers[key]() for key in deliverables if key in renderers}
 
 
+
+def load_topic_ledger(topic_path: Path, topic: str, flow_id: str) -> dict:
+    ledger_path = topic_path / "ledger.json"
+    if ledger_path.exists():
+        try:
+            ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            ledger = {}
+    else:
+        ledger = {}
+    ledger.setdefault("flow_id", flow_id)
+    ledger.setdefault("topic", topic)
+    ledger.setdefault("status", "new")
+    ledger.setdefault("current_step", "init")
+    ledger.setdefault("next_step", "score")
+    ledger.setdefault("updated_at", now_iso())
+    ledger.setdefault("artifacts", {})
+    ledger.setdefault("runs", [])
+    ledger.setdefault("history", [])
+    return ledger
+
+
+def ledger_status_for(deliverables: list[str]) -> tuple[str, str, str]:
+    if "retro" in deliverables:
+        return "retrospected", "retro", "review_score_rules"
+    if "publish_record" in deliverables:
+        return "published", "publish", "retro"
+    if "video_script" in deliverables or "humanized_copy" in deliverables or "hook_review" in deliverables:
+        return "scripted", "script", "publish"
+    if "prediction" in deliverables:
+        return "predicted", "prediction", "write_script"
+    if "score" in deliverables:
+        return "scored", "score", "prediction"
+    if "review" in deliverables or "douyin_review" in deliverables:
+        return "reviewed", "review", "score"
+    if "spark_card" in deliverables or "seed_draft" in deliverables:
+        return "drafted", "spark", "score"
+    return "updated", "artifact", "continue"
+
+
+def event_name_for(deliverable: str) -> str:
+    return f"{deliverable}_generated"
+
+
+def update_topic_ledger(topic_path: Path, topic: str, flow_id: str, stage: str, deliverables: list[str], files: list[dict], source: dict, skill_meta: dict | None = None) -> dict:
+    ledger = load_topic_ledger(topic_path, topic, flow_id)
+    now = now_iso()
+    status, current_step, next_step = ledger_status_for(deliverables)
+    ledger["status"] = status
+    ledger["current_step"] = current_step
+    ledger["next_step"] = next_step
+    ledger["updated_at"] = now
+    ledger["stage"] = stage
+    ledger["artifacts"] = ledger.get("artifacts", {})
+    ledger["runs"] = ledger.get("runs", [])
+    ledger["history"] = ledger.get("history", [])
+    meta = skill_meta or {}
+    file_by_type = {item.get("type"): item for item in files if item.get("type")}
+    for deliverable in deliverables:
+        file_item = file_by_type.get(deliverable, {})
+        entry = {
+            "type": deliverable,
+            "label": DELIVERABLE_LABELS.get(deliverable, deliverable),
+            "path": file_item.get("path", ""),
+            "updated_at": now,
+            "stage": stage,
+        }
+        if deliverable == "prediction":
+            entry["immutable"] = True
+        if deliverable == "score":
+            route = source.get("score_skill_route", {}) if isinstance(source, dict) else {}
+            entry["source"] = route.get("skill", "blind_score")
+            entry["run_id"] = route.get("hidden_agent_run_id", "")
+        if deliverable in meta:
+            route = meta.get(deliverable, {}).get("skill_route", {})
+            entry["source"] = route.get("skill", "")
+            entry["run_id"] = meta.get(deliverable, {}).get("run_id", "")
+        ledger["artifacts"][deliverable] = entry
+        ledger["history"].append({"at": now, "event": event_name_for(deliverable), "stage": stage})
+    for key, value in meta.items():
+        ledger["runs"].append({
+            "type": "skill",
+            "deliverable": key,
+            "skill": value.get("skill_route", {}).get("skill", ""),
+            "run_id": value.get("run_id", ""),
+            "used": value.get("output_source") == "skill_llm",
+            "fallback_used": bool(value.get("fallback_used")),
+            "at": now,
+        })
+    atomic_write_text(topic_path / "ledger.json", json.dumps(ledger, ensure_ascii=False, indent=2))
+    return ledger
+
 def write_deliverable_artifacts(
     message: str,
     stage: str,
@@ -1796,6 +1937,7 @@ def write_deliverable_artifacts(
     llm_text: str,
     config: dict,
     source: dict | None = None,
+    skill_meta: dict | None = None,
 ) -> list[dict]:
     if not deliverables and not llm_text:
         return []
@@ -1863,10 +2005,18 @@ def write_deliverable_artifacts(
         "deliverables": deliverables,
         "files": files,
         "source": source_data,
+        "skill_meta": skill_meta or {},
     }
     manifest_path = artifact_dir / "manifest.json"
     files.append({"type": "manifest", "label": "Manifest", "path": str(manifest_path)})
     manifest["files"] = files
+    atomic_write_text(manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2))
+    ledger = update_topic_ledger(artifact_dir, flow_topic, flow_id, stage, deliverables, files, source_data, skill_meta)
+    ledger_path = artifact_dir / "ledger.json"
+    if not any(item.get("type") == "ledger" for item in files):
+        files.append({"type": "ledger", "label": "Ledger", "path": str(ledger_path)})
+    manifest["files"] = files
+    manifest["ledger"] = {"status": ledger.get("status", ""), "next_step": ledger.get("next_step", "")}
     atomic_write_text(manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2))
     return files
 
@@ -1890,6 +2040,7 @@ def ensure_topic_scaffold(path: Path, topic: str, flow_id: str) -> list[dict]:
         path / "prediction" / "prediction.md": f"# 发布预测\n\n主题：{topic}\n\n尚未生成预测。\n",
         path / "publish" / "publish.md": f"# 发布登记\n\n主题：{topic}\n\n尚未登记发布。\n",
         path / "retro" / "retro.md": f"# 复盘\n\n主题：{topic}\n\n尚未生成复盘。\n",
+        path / "ledger.json": json.dumps({"flow_id": flow_id, "topic": topic, "status": "new", "current_step": "init", "next_step": "score", "updated_at": now_iso(), "artifacts": {}, "runs": [], "history": []}, ensure_ascii=False, indent=2),
     }
     for file_path, content in placeholders.items():
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2036,6 +2187,96 @@ def render_retro(topic: str, metrics: dict, run: dict | None = None, notes: str 
 3. 若互动率高，继续生成同主题第二条脚本。
 """
 
+
+
+def parse_compact_number(value: str) -> int:
+    raw = str(value or "").strip().replace(",", "")
+    if not raw:
+        return 0
+    match = re.search(r"(\d+(?:\.\d+)?)\s*([wWkK万千]?)", raw)
+    if not match:
+        return 0
+    number = float(match.group(1))
+    unit = match.group(2)
+    if unit in {"万", "w", "W"}:
+        number *= 10000
+    elif unit in {"千", "k", "K"}:
+        number *= 1000
+    return int(number)
+
+
+def extract_workflow_topic_from_message(text: str) -> str:
+    cleaned = re.sub(r"^(发布登记|登记发布|已发布|发出去了|发布了|复盘这个选题|复盘这个灵感|复盘|生成复盘|T\+3复盘|t\+3复盘)[：:\s]*", "", text.strip(), flags=re.I)
+    topic_match = re.search(r"(?:选题|主题|标题)[：:]\s*([^，,。；;\n]+)", cleaned)
+    if topic_match:
+        return topic_match.group(1).strip()
+    metric_pos = len(cleaned)
+    for token in ["平台", "链接", "发布时间", "播放", "点赞", "评论", "收藏", "分享"]:
+        idx = cleaned.find(token)
+        if idx >= 0:
+            metric_pos = min(metric_pos, idx)
+    candidate = cleaned[:metric_pos].strip(" ，,。；;：:")
+    return candidate or extract_topic(text)
+
+
+def parse_publish_message(text: str) -> dict:
+    payload = {"topic": extract_workflow_topic_from_message(text)}
+    url_match = re.search(r"https?://[^\s，,。；;]+", text)
+    if url_match:
+        payload["url"] = url_match.group(0)
+    platform_match = re.search(r"平台[：:]?\s*([^，,。；;\s]+)", text)
+    if platform_match:
+        payload["platform"] = platform_match.group(1).strip()
+    elif "抖音" in text:
+        payload["platform"] = "抖音"
+    time_match = re.search(r"发布时间[：:]?\s*([0-9]{4}[-/][0-9]{1,2}[-/][0-9]{1,2}(?:\s+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)?)", text)
+    if time_match:
+        payload["published_at"] = time_match.group(1).strip()
+    metrics = parse_metrics_from_text(text)
+    if metrics:
+        payload["initial_metrics"] = metrics
+    return payload
+
+
+def parse_metrics_from_text(text: str) -> dict:
+    patterns = {
+        "views": r"(?:播放|阅读|浏览|观看)[：:]?\s*(\d+(?:\.\d+)?\s*(?:w|W|k|K|万|千)?)",
+        "likes": r"(?:点赞|赞)[：:]?\s*(\d+(?:\.\d+)?\s*(?:w|W|k|K|万|千)?)",
+        "comments": r"(?:评论|留言)[：:]?\s*(\d+(?:\.\d+)?\s*(?:w|W|k|K|万|千)?)",
+        "saves": r"(?:收藏|藏)[：:]?\s*(\d+(?:\.\d+)?\s*(?:w|W|k|K|万|千)?)",
+        "shares": r"(?:分享|转发)[：:]?\s*(\d+(?:\.\d+)?\s*(?:w|W|k|K|万|千)?)",
+    }
+    metrics = {}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, text)
+        if match:
+            metrics[key] = parse_compact_number(match.group(1))
+    return metrics
+
+
+def parse_retro_message(text: str) -> dict:
+    return {
+        "topic": extract_workflow_topic_from_message(text),
+        "metrics": parse_metrics_from_text(text),
+    }
+
+
+def workflow_action_reply(stage: str, summary: str, worklog: list[str], payload_result: dict, next_step: dict) -> dict:
+    artifacts = payload_result.get("artifacts", [])
+    return {
+        "id": str(uuid.uuid4()),
+        "created_at": now_iso(),
+        "status": "ok",
+        "stage": stage,
+        "summary": summary,
+        "worklog": worklog + ([f"已落盘 {len(artifacts)} 个产物文件。"] if artifacts else []),
+        "actions": [{"type": "open_file", "path": item["path"], "label": item["label"]} for item in artifacts],
+        "result": {
+            "run": payload_result.get("run", {}),
+            "artifacts": artifacts,
+            "next_step": next_step,
+        },
+    }
 
 def register_publish(payload: dict, config: dict) -> dict:
     topic = extract_topic(payload.get("topic") or payload.get("title") or payload.get("url") or "未命名发布")
@@ -2217,6 +2458,8 @@ def profile_update_summary(profile: dict, updates: dict) -> str:
 
 
 def looks_like_profile_update(text: str) -> bool:
+    if re.search(r"^(发布登记|登记发布|已发布|发出去了|发布了|复盘这个选题|复盘这个灵感|复盘|生成复盘|T\+3复盘|t\+3复盘)", text.strip(), re.I):
+        return False
     return bool(re.search(r"我是做|我做|平台|赛道|人设|定位", text) and detect_profile_updates(text))
 
 
@@ -2348,6 +2591,28 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
     stage, deliverables = route_deliverables(text)
     topic = extract_topic(text)
 
+    if stage == "publish_registration":
+        payload = parse_publish_message(text)
+        published = register_publish(payload, config)
+        return workflow_action_reply(
+            "publish_registration",
+            "发布登记已写入，这个选题下一步进入 T+3 复盘。",
+            worklog,
+            published,
+            {"label": "T+3 复盘", "prompt": f"复盘这个选题：{payload.get('topic', topic)}"},
+        )
+
+    if stage == "retro":
+        payload = parse_retro_message(text)
+        retro = generate_retro(payload, config)
+        return workflow_action_reply(
+            "retro",
+            "复盘已写入，预测记录保持锁定不改。",
+            worklog,
+            retro,
+            {"label": "更新评分规则", "prompt": "升级评分规则"},
+        )
+
     if stage == "chat":
         content, llm_note = call_chat_provider(text, config, conversation_history=conversation_history)
         worklog.append(llm_note)
@@ -2388,10 +2653,13 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
         worklog.append(llm_note)
 
     rendered = render_deliverables(topic, deliverables, config)
+    skill_meta = execute_skill_deliverables(topic, rendered, deliverables, config)
+    source_for_artifacts = dict(source or {})
     if "score" in deliverables:
         score_data = isolated_blind_score(topic, config)
+        source_for_artifacts["score_skill_route"] = score_data.get("skill_route", {})
         rendered["score"] = render_score(topic, score_data)
-    artifacts = write_deliverable_artifacts(text, stage, deliverables, rendered, llm_text, config, source)
+    artifacts = write_deliverable_artifacts(text, stage, deliverables, rendered, llm_text, config, source_for_artifacts, skill_meta)
     if artifacts:
         worklog.append(f"已落盘 {len(artifacts)} 个产物文件。")
     if confirmed_pending:
@@ -2423,6 +2691,9 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
             "preview": {key: value.splitlines()[:8] for key, value in rendered.items()},
             "next_step": next_step,
         }
+        if skill_meta:
+            result["skill_meta"] = skill_meta
+            result["skill_routes"] = {key: meta.get("skill_route", {}) for key, meta in skill_meta.items()}
         if "score" in deliverables:
             result["skill_route"] = score_data.get("skill_route", {})
             result["score_meta"] = {
