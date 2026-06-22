@@ -7,6 +7,7 @@ import mimetypes
 import os
 import re
 import shutil
+import sys
 import urllib.error
 import urllib.request
 import uuid
@@ -14,17 +15,38 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlencode, urlparse
+from urllib.parse import parse_qs, unquote, urlencode, urlparse
+
+_IMPORT_ROOT = Path(__file__).resolve().parent
+if str(_IMPORT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_IMPORT_ROOT))
+
+from agent.hidden_agent import run_hidden_agent
+from agent.prompt_builder import build_workflow_system_prompt_text, load_workflow_prompt_file
+from agent.skill_registry import skill_route_for_deliverable as registry_skill_route_for_deliverable
+from agent.skill_registry import skill_route_with_prompt
+from agent.state import default_session_state as default_session_state_model
+from agent.state import load_session_state_file, save_session_state_file
+from model.llm import call_openai_chat_completion
+from storage.conversations import append_conversation_turn_file, conversation_history_for_llm
+from storage.conversations import conversation_path as storage_conversation_path
+from storage.conversations import conversation_title_from_message, create_conversation_file
+from storage.conversations import delete_conversation_file, list_conversation_files, load_conversation_file, rename_conversation_file
+from workflow.spark import is_confirm_collect, is_empty_collect_request, looks_like_spark_candidate_text
+from workflow.spark import strip_collect_prefix, title_options_for_spark
 
 
 APP_VERSION = "0.1.0"
 APP_ROOT = Path(__file__).resolve().parent
 WORKSPACE_ROOT = APP_ROOT.parent
 STATIC_ROOT = APP_ROOT / "static"
+PROMPTS_ROOT = APP_ROOT / "prompts"
+WORKFLOW_PROMPT_PATH = PROMPTS_ROOT / "content_creator_workflow.md"
 DATA_ROOT = Path(os.environ.get("CONTENT_WORKBENCH_HOME", Path.home() / ".content-workbench"))
 CONFIG_PATH = DATA_ROOT / "config.json"
 INBOX_PATH = DATA_ROOT / "inbox.jsonl"
 WORKFLOW_RUNS_PATH = DATA_ROOT / "workflow_runs.jsonl"
+SESSION_STATE_PATH = DATA_ROOT / "session_state.json"
 CONVERSATIONS_DIR = DATA_ROOT / "conversations"
 DEFAULT_PROJECT_PATH = DATA_ROOT / "projects" / "default-content-project"
 MASKED_KEY = "********"
@@ -88,6 +110,19 @@ def ensure_data_dirs() -> None:
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
     CONVERSATIONS_DIR.mkdir(parents=True, exist_ok=True)
     (DEFAULT_PROJECT_PATH / "archive").mkdir(parents=True, exist_ok=True)
+
+
+def default_session_state() -> dict:
+    return default_session_state_model()
+
+
+def load_session_state() -> dict:
+    ensure_data_dirs()
+    return load_session_state_file(SESSION_STATE_PATH)
+
+
+def save_session_state(state: dict) -> dict:
+    return save_session_state_file(SESSION_STATE_PATH, state, now_iso)
 
 
 def atomic_write_text(path: Path, text: str) -> None:
@@ -173,6 +208,64 @@ def deep_update(target: dict, incoming: dict) -> dict:
         else:
             target[key] = value
     return target
+
+
+def read_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    items: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            items.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return items
+
+
+def conversation_path(conversation_id: str) -> Path:
+    return storage_conversation_path(CONVERSATIONS_DIR, conversation_id)
+
+
+def create_conversation(title: str = "新对话") -> dict:
+    ensure_data_dirs()
+    return create_conversation_file(CONVERSATIONS_DIR, atomic_write_text, now_iso, title)
+
+
+def load_conversation(conversation_id: str) -> dict:
+    return load_conversation_file(CONVERSATIONS_DIR, conversation_id)
+
+
+def list_conversations() -> list[dict]:
+    ensure_data_dirs()
+    return list_conversation_files(CONVERSATIONS_DIR, load_conversation)
+
+
+def delete_conversation(conversation_id: str) -> bool:
+    return delete_conversation_file(CONVERSATIONS_DIR, conversation_id)
+
+
+def rename_conversation(conversation_id: str, title: str) -> dict:
+    ensure_data_dirs()
+    return rename_conversation_file(CONVERSATIONS_DIR, atomic_write_text, now_iso, conversation_id, title)
+
+
+def append_conversation_turn(conversation_id: str, message: str, reply: dict) -> dict:
+    return append_conversation_turn_file(
+        CONVERSATIONS_DIR,
+        atomic_write_text,
+        now_iso,
+        load_conversation,
+        create_conversation,
+        conversation_id,
+        message,
+        reply,
+    )
+
+
+def conversation_history(conversation: dict, limit: int = 8) -> list[dict]:
+    return conversation_history_for_llm(conversation, limit=limit)
 
 
 def read_jsonl(path: Path) -> list[dict]:
@@ -301,7 +394,7 @@ def list_project_files(config: dict) -> dict:
     raw_project_path = config.get("content_project_path") or ""
     project_path = Path(raw_project_path) if raw_project_path.strip() else Path()
     groups = {}
-    for name in ["deliverables", "scripts", "predictions", "archive"]:
+    for name in ["topics", "deliverables", "scripts", "predictions", "videos", "archive"]:
         base = project_path / name
         files = []
         if base.exists():
@@ -318,6 +411,58 @@ def list_project_files(config: dict) -> dict:
                     )
         groups[name] = files
     return {"project_path": str(project_path), "groups": groups}
+
+
+
+
+def skill_route_for_deliverable(deliverable: str) -> dict:
+    return registry_skill_route_for_deliverable(deliverable)
+
+
+def topic_panel_payload(config: dict, flow_id: str = "", topic: str = "") -> dict:
+    project_path = project_path_from_config(config)
+    target = Path()
+    if flow_id:
+        topics_root = project_path / "topics"
+        if topics_root.exists():
+            for candidate in sorted(topics_root.iterdir()):
+                if candidate.is_dir() and candidate.name.startswith(f"{flow_id}_"):
+                    target = candidate
+                    break
+    if not target and topic:
+        target = topic_dir(project_path, topic, {"flow_id": topic_flow_id(topic), "flow_topic": topic})
+    if not target:
+        return {"status": "not_found", "sections": {}}
+    def section_payload(key: str, path: Path) -> dict:
+        exists = path.exists()
+        return {
+            "key": key,
+            "path": str(path),
+            "exists": exists,
+            "content": path.read_text(encoding="utf-8", errors="replace") if exists else "",
+            "modified_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds") if exists else "",
+        }
+    sections = {
+        "script": section_payload("script", target / "script" / "script.md"),
+        "prediction": section_payload("prediction", target / "prediction" / "prediction.md"),
+        "publish": section_payload("publish", target / "publish" / "publish.md"),
+        "retro": section_payload("retro", target / "retro" / "retro.md"),
+    }
+    manifest_path = target / "manifest.json"
+    manifest = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            manifest = {}
+    return {
+        "status": "ok",
+        "topic_dir": str(target),
+        "flow_id": flow_id or manifest.get("flow_id", ""),
+        "topic": topic or manifest.get("topic", ""),
+        "manifest": manifest,
+        "sections": sections,
+    }
 
 
 def resolve_project_file(config: dict, raw_path: str) -> Path:
@@ -341,7 +486,7 @@ def safe_slug(text: str, default: str = "idea", max_len: int = 36) -> str:
 
 
 def ensure_project_structure(project_path: Path) -> None:
-    for folder in ["deliverables", "scripts", "predictions", "archive"]:
+    for folder in ["topics", "deliverables", "scripts", "predictions", "videos", "archive"]:
         (project_path / folder).mkdir(parents=True, exist_ok=True)
 
 
@@ -376,7 +521,7 @@ def route_deliverables(message: str) -> tuple[str, list[str]]:
         (r"^(评分|打分|给.*评分|给.*打分)", "on_demand_production", ["score"]),
         (r"^(预测|预判)", "on_demand_production", ["prediction"]),
         (r"^(写.*脚本|生成.*脚本|视频脚本|口播脚本|口播稿)", "on_demand_production", ["video_script"]),
-        (r"^(标题|封面|发布文案|简介|话题|评论区)", "on_demand_production", ["text_pack"]),
+        (r"^(标题|封面|发布文案|简介|评论区)", "on_demand_production", ["text_pack"]),
         (r"^(生成.*静态页|静态页|图文页|卡片文案|轮播)", "on_demand_production", ["static_page"]),
     ]
     for pattern, stage, deliverables in explicit_routes:
@@ -404,17 +549,17 @@ def route_deliverables(message: str) -> tuple[str, list[str]]:
         deliverables.append("humanized_copy")
     if any(token in text for token in ["金句卡", "overlay", "横版卡", "全屏切卡"]):
         deliverables.append("overlay_card")
-    if any(token in text for token in ["标题", "封面", "发布文案", "简介", "话题", "评论区"]):
+    if any(token in text for token in ["标题", "封面", "发布文案", "简介", "评论区"]):
         deliverables.append("text_pack")
     if any(token in text for token in ["静态页", "图文页", "卡片文案", "轮播"]):
         deliverables.append("static_page")
 
     if deliverables:
         return "on_demand_production", list(dict.fromkeys(deliverables))
-    if any(token in text for token in ["固化", "火花", "灵感", "收录", "候选"]):
+    if re.search(r"^(固化|收录|整理|候选|开始流程|保存这个灵感|把这个灵感存下来)", text):
         return "spark_solidify", ["spark_card"]
     if text:
-        return "spark_solidify", ["spark_card"]
+        return "chat", []
     return "deliverable_selection", []
 
 
@@ -442,45 +587,47 @@ def call_model_provider(prompt: str, config: dict) -> tuple[str, str]:
     return call_openai_chat(messages, config, temperature=0.7, timeout=60)
 
 
-def call_openai_chat(messages: list[dict], config: dict, temperature: float = 0.7, timeout: int = 60) -> tuple[str, str]:
-    api_key = config.get("api_key", "")
-    if not api_key:
-        return "", "未配置 API Key，使用 Mosmori 本地生成。"
-    base_url = (config.get("api_base_url") or "").rstrip("/")
-    model = config.get("model") or "gpt-4.1-mini"
-    if not base_url:
-        return "", "未配置 API Base URL，使用 Mosmori 本地生成。"
+def load_workflow_prompt() -> str:
+    return load_workflow_prompt_file(WORKFLOW_PROMPT_PATH)
 
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    request = urllib.request.Request(
-        f"{base_url}/chat/completions",
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        content = data["choices"][0]["message"]["content"]
-        return content.strip(), "LLM 调用成功。"
-    except (urllib.error.URLError, KeyError, json.JSONDecodeError, TimeoutError) as exc:
-        return "", f"模型调用失败，使用 Mosmori 本地生成：{exc}"
+
+def build_workflow_system_prompt(config: dict) -> str:
+    profile = load_session_state().get("profile", {})
+    return build_workflow_system_prompt_text(config, load_workflow_prompt(), profile)
+
+
+def call_chat_provider(message: str, config: dict, conversation_history: list[dict] | None = None) -> tuple[str, str]:
+    messages = [
+        {"role": "system", "content": build_workflow_system_prompt(config)},
+    ]
+    for history_item in (conversation_history or [])[-8:]:
+        role = "assistant" if history_item.get("role") == "assistant" else "user"
+        content = str(history_item.get("content") or "").strip()
+        if content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": message})
+    return call_openai_chat(messages, config, temperature=0.7, timeout=60)
+
+
+def call_openai_chat(messages: list[dict], config: dict, temperature: float = 0.7, timeout: int = 60) -> tuple[str, str]:
+    return call_openai_chat_completion(messages, config, temperature=temperature, timeout=timeout)
 
 
 def test_model_provider(config: dict) -> dict:
     prompt = "请只回复：模型连接成功"
     content, note = call_model_provider(prompt, config)
-    return {
-        "ok": bool(content),
+    ok = bool(content)
+    result = {
+        "ok": ok,
+        "status": "connected" if ok else "failed",
         "note": note,
         "model": config.get("model", ""),
         "api_base_url": config.get("api_base_url", ""),
         "reply": content,
+        "error": "" if ok else note,
+        "tested_at": now_iso(),
     }
+    return result
 
 
 def cloud_request(method: str, base_url: str, path: str, payload: dict | None = None, timeout: int = 20) -> dict:
@@ -573,8 +720,8 @@ def extract_topic(message: str) -> str:
         r"^(帮我|请|给我|做一个|做个|生成|写一个|写个)",
         r"^(看看|分析|优化|评价)",
         r"^(全套物料|全套|完整流程|完整|做成视频|成片)",
-        r"^(固化灵感|固化这个灵感|审核这个灵感|审核这个选题|给这个选题评分|给这个灵感评分)",
-        r"^(预测这个选题|预测这个灵感|写视频脚本|生成静态页文案|生成静态页|标题封面句|标题|发布文案)",
+        r"^(固化灵感|固化这个灵感|审核这个灵感|审核这个选题|给这个选题评分|给这个灵感评分|打分这个选题|打分这个灵感|评分这个选题|评分这个灵感)",
+        r"^(预测这个选题|预测这个灵感|打分这个选题|打分这个灵感|评分这个选题|评分这个灵感|写视频脚本|生成静态页文案|生成静态页|标题封面句|标题|发布文案)",
     ]
     changed = True
     while changed:
@@ -1034,27 +1181,8 @@ def render_good_article_analysis(topic: str) -> str:
 """
 
 
-def render_score(topic: str) -> str:
-    return f"""# 内容评分
-
-主题：{topic}
-
-> 当前本地评分用于选题初筛，不等同于完整发布预测系统。
-
-| 维度 | 分数 | 理由 |
-|------|------|------|
-| 受众痛感 | 4/5 | 主题指向常见困扰，容易被代入。 |
-| 人设承载 | 3/5 | 需要补充个人经历或专业场景。 |
-| 反常识强度 | 4/5 | “不是不努力，而是入口错”有转折。 |
-| 具体度 | 2/5 | 当前仍偏抽象，需要一个真实例子。 |
-| 互动潜力 | 4/5 | 适合引导评论区讲自己的卡点。 |
-
-综合评分：17/25
-
-推荐等级：B
-
-处理建议：不要直接拍，先补一个具体故事或真实案例，再进入预测。
-"""
+def render_score(topic: str, score_data: dict | None = None) -> str:
+    return render_spark_score(topic, score_data or isolated_blind_score(topic, {}))
 
 
 def unique_strings(items: list[str]) -> list[str]:
@@ -1374,9 +1502,81 @@ Composite：{score_data.get("composite", 0)}/10
 """
 
 
+
+def score_from_hidden_agent_run(topic: str, selected_title: str, hidden_run: dict) -> dict | None:
+    llm_call = hidden_run.get("llm_call") if isinstance(hidden_run.get("llm_call"), dict) else {}
+    raw_output = str(llm_call.get("raw_output_excerpt") or "").strip()
+    if not raw_output:
+        return None
+    try:
+        parsed = extract_json_object(raw_output)
+        dimensions = normalize_score_dimensions(parsed.get("dimensions"))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+    candidates = generate_title_candidates(topic)
+    chosen_title = str(parsed.get("selected_title") or selected_title or candidates[0]).strip()
+    if chosen_title not in candidates:
+        candidates = unique_strings([chosen_title, *candidates])[:4]
+    composite, mosmori_score = composite_score(dimensions)
+    scoring_text = f"{chosen_title}\n{topic}"
+    self_check = parsed.get("self_check") if isinstance(parsed.get("self_check"), dict) else {}
+    local_self_check = score_input_self_check(scoring_text)
+    self_check = {**self_check, **{key: bool(self_check.get(key) or value) for key, value in local_self_check.items()}}
+    return {
+        "mosmori_score": mosmori_score,
+        LEGACY_PRIMARY_SCORE_KEY: mosmori_score,
+        LEGACY_SECONDARY_SCORE_KEY: mosmori_score,
+        "score_source": "mosmori-hidden-agent-score-v0",
+        "score_source_label": "Mosmori 隐藏 agent 评分",
+        "score_source_note": "隐藏盲打分 agent 独立调用模型完成评分；只传入当前选题/标题/评分规则。",
+        "score_rules_version": parsed.get("score_rules_version") or "spark-v0",
+        "composite": composite,
+        "score_breakdown": dimensions,
+        "title_candidates": candidates,
+        "selected_title": chosen_title,
+        "scored_at": now_iso(),
+        "script_hash": hashlib.sha256(scoring_text.encode("utf-8")).hexdigest()[:12],
+        "score_input_policy": "hidden-agent-title-content-score-rules-only",
+        "input_status": parsed.get("input_status") if isinstance(parsed.get("input_status"), dict) else {"minimal_input_only": True, "hidden_agent": True},
+        "self_check": self_check,
+        "refusal": parsed.get("refusal"),
+    }
+
+def isolated_blind_score(topic: str, config: dict, selected_title: str = "") -> dict:
+    route = skill_route_with_prompt(APP_ROOT, "score")
+    project_path = project_path_from_config(config)
+    hidden_run = run_hidden_agent(
+        skill_route=route,
+        topic=topic,
+        selected_title=selected_title,
+        rubric=SPARK_SCORE_RULES,
+        project_path=project_path,
+        config=config,
+        llm_callback=call_openai_chat,
+    )
+    hidden_score = score_from_hidden_agent_run(topic, selected_title, hidden_run)
+    score_data = hidden_score or mosmori_score_spark(topic, selected_title, config, prefer_model=True)
+    score_data["hidden_agent_run_consumed"] = True
+    score_data["hidden_agent_score_used"] = bool(hidden_score)
+    route_meta = {key: value for key, value in route.items() if key != "prompt"}
+    route_meta.update({
+        "isolated_agent": True,
+        "conversation_history_used": False,
+        "hidden_agent_run_id": hidden_run.get("id", ""),
+        "hidden_agent_run_path": hidden_run.get("run_path", ""),
+        "flow_id": topic_flow_id(topic),
+    })
+    score_data["skill_route"] = route_meta
+    score_data["score_source_note"] = (
+        score_data.get("score_source_note", "")
+        + " 本次由隐藏盲打分 agent 执行；只传入当前选题/标题/评分规则，不传入聊天历史。"
+    ).strip()
+    return score_data
+
+
 def score_spark_item(item: dict, selected_title: str, config: dict, demo: bool = False) -> tuple[dict, list[dict]]:
     topic = item.get("content") or item.get("media_url") or "未命名灵感"
-    score_data = mosmori_score_spark(topic, selected_title, config, prefer_model=not demo)
+    score_data = isolated_blind_score(topic, config, selected_title) if not demo else local_score_spark(topic, selected_title, "演示模式使用 Mosmori 本地评分。")
     rendered = {"score": render_spark_score(topic, score_data)}
     flow_id = item.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
     source = {
@@ -1529,7 +1729,7 @@ def render_text_pack(topic: str) -> str:
 真正的问题是：一开始选的目标就没有和自己的处境、资源、表达欲匹配。
 这条聊聊怎么在开干前先判断一件事值不值得做。
 
-话题：
+标签：
 #个人IP #内容创作 #普通人成长 #副业 #认知
 """
 
@@ -1605,27 +1805,30 @@ def write_deliverable_artifacts(
     source_data.setdefault("flow_id", hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12])
     project_path = project_path_from_config(config)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    artifact_dir = project_path / "deliverables" / f"{stamp}_{safe_slug(topic)}"
+    flow_topic = source_data.get("flow_topic") or topic
+    flow_id = source_data.get("flow_id") or hashlib.sha256(flow_topic.encode("utf-8")).hexdigest()[:12]
+    artifact_dir = topic_dir(project_path, flow_topic, {**source_data, "flow_id": flow_id, "flow_topic": flow_topic})
     artifact_dir.mkdir(parents=True, exist_ok=True)
     files: list[dict] = []
+    ensure_topic_scaffold(artifact_dir, flow_topic, flow_id)
 
     name_map = {
-        "init_state": "init-state.md",
-        "spark_card": "spark-card.md",
-        "seed_draft": "seed-draft.md",
-        "review": "review.md",
-        "douyin_review": "douyin-review.md",
-        "hook_review": "hook-review.md",
-        "score": "score.md",
-        "prediction": "prediction.md",
-        "video_script": "video-script.md",
-        "humanized_copy": "humanized-copy.md",
-        "overlay_card": "overlay-card.md",
-        "text_pack": "text-pack.md",
-        "static_page": "static-page.md",
-        "shoot_record": "shoot-record.md",
-        "publish_record": "publish-record.md",
-        "retro": "retro.md",
+        "init_state": "manifest/init-state.md",
+        "spark_card": "manifest/spark-card.md",
+        "seed_draft": "script/seed-draft.md",
+        "review": "manifest/review.md",
+        "douyin_review": "manifest/douyin-review.md",
+        "hook_review": "script/hook-review.md",
+        "score": "manifest/score.md",
+        "prediction": "prediction/prediction.md",
+        "video_script": "script/script.md",
+        "humanized_copy": "script/humanized-copy.md",
+        "overlay_card": "script/overlay-card.md",
+        "text_pack": "script/text-pack.md",
+        "static_page": "script/static-page.md",
+        "shoot_record": "videos/shoot-record.md",
+        "publish_record": "publish/publish.md",
+        "retro": "retro/retro.md",
         "status_report": "status-report.md",
         "trend_candidates": "trend-candidates.md",
         "topic_recommendation": "topic-recommendation.md",
@@ -1637,34 +1840,70 @@ def write_deliverable_artifacts(
         "good_article_analysis": "good-article-analysis.md",
     }
     for key, content in rendered.items():
-        path = artifact_dir / name_map.get(key, f"{key}.md")
+        path = artifact_dir / name_map.get(key, f"manifest/{key}.md")
+        path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(path, content)
         files.append({"type": key, "label": DELIVERABLE_LABELS.get(key, key), "path": str(path)})
 
     if llm_text:
-        path = artifact_dir / "llm-output.md"
+        llm_dir = artifact_dir / "llm-output"
+        llm_dir.mkdir(parents=True, exist_ok=True)
+        path = llm_dir / f"{stamp}_{safe_slug(stage, default='stage', max_len=24)}.md"
         atomic_write_text(path, "# LLM Output\n\n" + llm_text + "\n")
         files.append({"type": "llm_output", "label": "LLM 输出", "path": str(path)})
 
     manifest = {
         "id": str(uuid.uuid4()),
         "created_at": now_iso(),
+        "updated_at": now_iso(),
         "stage": stage,
         "request": message,
-        "topic": topic,
+        "topic": flow_topic,
+        "flow_id": flow_id,
         "deliverables": deliverables,
-        "source": source_data,
         "files": files,
+        "source": source_data,
     }
     manifest_path = artifact_dir / "manifest.json"
-    atomic_write_text(manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2))
     files.append({"type": "manifest", "label": "Manifest", "path": str(manifest_path)})
+    manifest["files"] = files
+    atomic_write_text(manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2))
     return files
 
 
-def flow_id_from_source(topic: str, source: dict | None = None) -> str:
+def topic_flow_id(topic: str, source: dict | None = None) -> str:
     source_data = source if isinstance(source, dict) else {}
-    return source_data.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
+    return str(source_data.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12])
+
+
+def topic_dir(project_path: Path, topic: str, source: dict | None = None) -> Path:
+    source_data = source if isinstance(source, dict) else {}
+    flow_topic = str(source_data.get("flow_topic") or topic)
+    return project_path / "topics" / f"{topic_flow_id(flow_topic, source_data)}_{safe_slug(flow_topic)}"
+
+
+def ensure_topic_scaffold(path: Path, topic: str, flow_id: str) -> list[dict]:
+    path.mkdir(parents=True, exist_ok=True)
+    created: list[dict] = []
+    placeholders = {
+        path / "script" / "script.md": f"# 口播稿\n\n主题：{topic}\n\n",
+        path / "prediction" / "prediction.md": f"# 发布预测\n\n主题：{topic}\n\n尚未生成预测。\n",
+        path / "publish" / "publish.md": f"# 发布登记\n\n主题：{topic}\n\n尚未登记发布。\n",
+        path / "retro" / "retro.md": f"# 复盘\n\n主题：{topic}\n\n尚未生成复盘。\n",
+    }
+    for file_path, content in placeholders.items():
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        if not file_path.exists():
+            atomic_write_text(file_path, content)
+        created.append({"type": "topic_scaffold", "label": "Topic Scaffold", "path": str(file_path)})
+    manifest_path = path / "manifest.json"
+    if not manifest_path.exists():
+        atomic_write_text(manifest_path, json.dumps({"flow_id": flow_id, "topic": topic, "created_at": now_iso(), "updated_at": now_iso(), "files": []}, ensure_ascii=False, indent=2))
+    return created
+
+
+def flow_id_from_source(topic: str, source: dict | None = None) -> str:
+    return topic_flow_id(topic, source)
 
 
 def artifact_paths(artifacts: list[dict], wanted_type: str | None = None) -> list[str]:
@@ -1928,16 +2167,219 @@ def next_step_for(deliverables: list[str], topic: str) -> dict:
     return {"label": "灵感固化", "prompt": f"固化这个灵感：{topic}"}
 
 
-def local_agent_reply(message: str, config: dict, source: dict | None = None) -> dict:
-    text = message.strip()
-    stage, deliverables = route_deliverables(text)
-    topic = extract_topic(text)
+def strip_collect_prefix(text: str) -> str:
+    return re.sub(r"^(收录这个灵感|固化这个灵感|收录|固化|保存这个灵感|把这个灵感存下来)[：:\s]*", "", text.strip()).strip()
 
+
+def is_empty_collect_request(text: str) -> bool:
+    return bool(re.match(r"^(收录这个灵感|固化这个灵感|收录|固化)[：:\s]*$", text.strip()))
+
+
+def is_confirm_collect(text: str) -> bool:
+    return bool(re.match(r"^(确认收录|就这个|收录吧|可以收录|确认|保存吧)$", text.strip()))
+
+
+def detect_profile_updates(text: str) -> dict:
+    updates: dict[str, str] = {}
+    if re.search(r"抖音|douyin", text, re.I):
+        updates["platform"] = "抖音"
+    elif "视频号" in text:
+        updates["platform"] = "视频号"
+    elif "小红书" in text:
+        updates["platform"] = "小红书"
+    if re.search(r"个人\s*IP|个人ip", text, re.I):
+        updates["track"] = "个人IP"
+    elif "商业" in text:
+        updates["track"] = "商业"
+    niche_match = re.search(r"赛道(?:是|：|:)?\s*([^。；;，,\n]+)", text)
+    if niche_match:
+        updates["niche"] = niche_match.group(1).strip()
+    if "商业诊断" in text:
+        updates.setdefault("niche", "商业诊断")
+    if "口播" in text:
+        updates["content_type"] = "口播"
+    elif "图文" in text:
+        updates["content_type"] = "图文"
+    return updates
+
+
+def profile_update_summary(profile: dict, updates: dict) -> str:
+    platform = profile.get("platform") or updates.get("platform") or "平台未定"
+    content_type = profile.get("content_type") or updates.get("content_type") or "内容形态未定"
+    track = profile.get("track") or updates.get("track") or "方向未定"
+    niche = profile.get("niche") or updates.get("niche") or ""
+    track_text = f"{track} / {niche}" if niche and niche != track else track
+    return (
+        f"好，我会按“{platform} · {content_type} · {track_text}”来理解后面的选题和产物。"
+        "以后新对话也会带着这组背景，不用反复交代。"
+        "接下来你直接抛观察、经历或一句判断就行。"
+    )
+
+
+def looks_like_profile_update(text: str) -> bool:
+    return bool(re.search(r"我是做|我做|平台|赛道|人设|定位", text) and detect_profile_updates(text))
+
+
+def looks_like_spark_candidate(text: str, state: dict | None = None) -> bool:
+    cleaned = text.strip()
+    if len(cleaned) < 10:
+        return False
+    if re.search(r"^(你是谁|你好|hello|hi|谢谢|测试)", cleaned, re.I):
+        return False
+    if re.fullmatch(r"[\w\u4e00-\u9fff\s，,、/+-]{2,18}", cleaned) and not re.search(r"我发现|我觉得|为什么|越来越|焦虑|困境|问题|现象|矛盾|代价|真相", cleaned):
+        return False
+    if route_deliverables(cleaned)[0] != "chat":
+        return False
+    if state and state.get("collecting_spark"):
+        return True
+    signals = r"我发现|我觉得|为什么|越来越|普通人|焦虑|困境|问题|现象|矛盾|代价|真相|内容|创作|生产|廉价|出头|注意力|同质化|门槛|速度"
+    return bool(re.search(signals, cleaned))
+
+
+def make_session_reply(stage: str, summary: str, worklog: list[str], result: dict) -> dict:
+    return {
+        "id": str(uuid.uuid4()),
+        "created_at": now_iso(),
+        "status": "ok",
+        "stage": stage,
+        "summary": summary,
+        "worklog": worklog,
+        "actions": [],
+        "result": {"artifacts": [], **result},
+    }
+
+
+def title_options_for_spark(content: str) -> list[str]:
+    core = strip_collect_prefix(content)
+    core = re.sub(r"^(就是|感觉|我发现|我觉得|我认为|其实|现在|如今)[，,\s]*", "", core)
+    core = re.sub(r"[。！？?]+$", "", core).strip() or strip_collect_prefix(content).strip()
+
+    if "学AI" in core and "焦虑" in core:
+        return [
+            "普通人学AI越焦虑，不是学得少，是判断入口错了",
+            "AI学习真正的陷阱，是把工具焦虑误当成能力焦虑",
+            "越努力学AI，越容易被“必须全会”的幻觉拖垮",
+        ]
+
+    if "内容" in core and any(token in core for token in ["廉价", "生产", "速度", "同质化"]):
+        return [
+            "内容生产越快，真正稀缺的越不是产能，是判断",
+            "AI让内容变廉价，但也让人的观点更值钱",
+            "所有人都会生成内容以后，不会表达的人反而更危险",
+        ]
+
+    if "个人IP" in core or "个人ip" in core:
+        return [
+            "普通人做个人IP最容易输在一开始就没观点",
+            "个人IP不是每天发内容，是持续证明你怎么看世界",
+            "做个人IP卡住，往往不是工具不够，是判断不够硬",
+        ]
+
+    subject = core[:30]
+    return [
+        f"{subject}背后真正的矛盾，是效率变高以后判断更稀缺",
+        f"别急着解决{subject}，先看清它正在放大什么问题",
+        f"{subject}不是一个工具问题，而是一个判断力问题",
+    ]
+
+
+def handle_session_stage(text: str, worklog: list[str]) -> dict | None:
+    state = load_session_state()
+    if is_confirm_collect(text) and state.get("pending_spark", {}).get("content"):
+        return None
+
+    if looks_like_profile_update(text):
+        updates = detect_profile_updates(text)
+        state.setdefault("profile", {}).update(updates)
+        save_session_state(state)
+        summary = profile_update_summary(state.get("profile", {}), updates)
+        return make_session_reply(
+            "profile_update",
+            summary,
+            worklog + ["识别为账号定位补充，已写入全局会话状态，后续新对话会自动注入系统提示。"],
+            {"profile": state.get("profile", {})},
+        )
+
+    if is_empty_collect_request(text) or re.match(r"^我想收录一个灵感", text):
+        state["pending_spark"] = {}
+        state["collecting_spark"] = True
+        save_session_state(state)
+        return make_session_reply(
+            "collect_guidance",
+            "可以。你先不用填表，直接说一句你的观察：你最近看到什么现象？它让你不舒服、好奇，还是想反驳？",
+            worklog + ["识别为空收录请求，改为追问而不是直接落盘。"],
+            {"suggested_actions": [{"label": "我发现...", "prompt": "我发现"}, {"label": "我想反驳...", "prompt": "我想反驳"}]},
+        )
+
+    if looks_like_spark_candidate(text, state):
+        titles = title_options_for_spark(text)
+        state["pending_spark"] = {"content": text, "title_options": titles, "created_at": now_iso()}
+        state["collecting_spark"] = False
+        save_session_state(state)
+        summary = "这个观察可以先留下，但我先不替你落盘。\n\n我抓到的核心是：" + text + "\n\n如果要继续，我建议先从这三个角度里挑一个：\n" + "\n".join(f"{idx + 1}. {title}" for idx, title in enumerate(titles)) + "\n\n你说“确认收录”我再写入；也可以直接回数字或让我改标题。"
+        return make_session_reply(
+            "spark_candidate",
+            summary,
+            worklog + ["识别为候选火花，已暂存到会话状态，等待确认。"],
+            {"pending_spark": state["pending_spark"], "suggested_actions": [{"label": "确认收录", "prompt": "确认收录"}, {"label": "判断选题", "prompt": f"判断这个选题值不值得做：{text}"}]},
+        )
+
+    return None
+
+
+def local_agent_reply(message: str, config: dict, source: dict | None = None, conversation_history: list[dict] | None = None) -> dict:
+    text = message.strip()
+    initial_stage, initial_deliverables = route_deliverables(text)
     worklog = [
         "读取当前创作者配置。",
         "按内容生产入口规则判断用户阶段。",
-        f"本次阶段：{stage}。",
+        "确认这次应该走聊天还是内容生产动作。",
     ]
+
+    session_reply = handle_session_stage(text, worklog)
+    if session_reply:
+        return session_reply
+
+    state = load_session_state()
+    confirmed_pending = is_confirm_collect(text) and bool(state.get("pending_spark", {}).get("content"))
+    if confirmed_pending:
+        text = f"固化这个灵感：{state['pending_spark']['content']}"
+
+    stage, deliverables = route_deliverables(text)
+    topic = extract_topic(text)
+
+    if stage == "chat":
+        content, llm_note = call_chat_provider(text, config, conversation_history=conversation_history)
+        worklog.append(llm_note)
+        answer_source = "model" if content else "local_fallback"
+        if not content:
+            if "未配置 API Key" in llm_note:
+                content = "我是 PenMoji 的内容工作台助手。现在模型还没连上，我只能先用本地规则回答。你可以在设置里配置 API Base URL、API Key 和模型名，然后点“测试模型”。"
+            elif "未配置 API Base URL" in llm_note:
+                content = "我是 PenMoji 的内容工作台助手。现在缺 API Base URL，模型还没连上。先去设置里补接口地址，再点“测试模型”。"
+            else:
+                content = f"我是 PenMoji 的内容工作台助手。模型调用失败，所以这次没有生成式回答。错误：{llm_note}"
+        return {
+            "id": str(uuid.uuid4()),
+            "created_at": now_iso(),
+            "status": "ok",
+            "stage": stage,
+            "summary": content,
+            "worklog": worklog,
+            "actions": [],
+            "result": {
+                "llm_used": answer_source == "model",
+                "llm_note": llm_note,
+                "answer_source": answer_source,
+                "answer": content,
+                "artifacts": [],
+                "suggested_actions": [
+                    {"label": "收录一个灵感", "prompt": "我想收录一个灵感，请引导我说清楚。"},
+                    {"label": "判断选题", "prompt": "判断这个选题值不值得做："},
+                    {"label": "写脚本", "prompt": "写视频脚本："},
+                ],
+            },
+        }
 
     llm_text = ""
     llm_note = "未请求 LLM。"
@@ -1946,9 +2388,17 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None) ->
         worklog.append(llm_note)
 
     rendered = render_deliverables(topic, deliverables, config)
+    if "score" in deliverables:
+        score_data = isolated_blind_score(topic, config)
+        rendered["score"] = render_score(topic, score_data)
     artifacts = write_deliverable_artifacts(text, stage, deliverables, rendered, llm_text, config, source)
     if artifacts:
         worklog.append(f"已落盘 {len(artifacts)} 个产物文件。")
+    if confirmed_pending:
+        state["pending_spark"] = {}
+        state["collecting_spark"] = False
+        save_session_state(state)
+        worklog.append("已清空待确认火花。")
     if "prediction" in deliverables and rendered.get("prediction"):
         run = lock_prediction_run(topic, rendered["prediction"], artifacts, source)
         worklog.append(f"已锁定发布预测记录：{run['id']}。")
@@ -1956,12 +2406,12 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None) ->
     next_step = next_step_for(deliverables, topic)
 
     if stage == "guided_workflow":
-        summary = "先不急着一次做完。我已完成第一步：灵感固化，并给出下一步引导。"
+        summary = "已把这个火花放进选题档案。下一步可以做盲打分或先写口播稿。"
     elif deliverables:
         labels = "、".join(DELIVERABLE_LABELS[key] for key in deliverables)
-        summary = f"当前步骤已完成：{labels}，我已写入本地文件。"
+        summary = f"{labels}已生成，文件已经更新到这个选题的固定目录。"
     else:
-        summary = "请先输入一个灵感火花，或从手机灵感点“开始流程”。"
+        summary = "你可以直接丢一个观察、经历或一句判断，我会先帮你整理成候选火花。"
 
     if deliverables:
         result = {
@@ -1973,6 +2423,14 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None) ->
             "preview": {key: value.splitlines()[:8] for key, value in rendered.items()},
             "next_step": next_step,
         }
+        if "score" in deliverables:
+            result["skill_route"] = score_data.get("skill_route", {})
+            result["score_meta"] = {
+                "score_source": score_data.get("score_source", ""),
+                "hidden_agent_run_consumed": bool(score_data.get("hidden_agent_run_consumed")),
+                "hidden_agent_score_used": bool(score_data.get("hidden_agent_score_used")),
+                "score_input_policy": score_data.get("score_input_policy", ""),
+            }
     else:
         result = {
             "options": [
@@ -2032,6 +2490,19 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             self.send_json({"items": read_jsonl(INBOX_PATH)})
         elif path == "/api/files":
             self.send_json(list_project_files(load_config(include_secret=False)))
+        elif path == "/api/topic":
+            config = load_config(include_secret=False)
+            query = {key: values[-1] for key, values in parse_qs(parsed.query).items()}
+            self.send_json(topic_panel_payload(config, flow_id=query.get("flow_id", ""), topic=query.get("topic", "")))
+        elif path == "/api/conversations":
+            self.send_json({"items": list_conversations()})
+        elif path.startswith("/api/conversations/"):
+            conversation_id = unquote(path.removeprefix("/api/conversations/"))
+            conversation = load_conversation(conversation_id)
+            if not conversation:
+                self.send_json({"error": "conversation not found"}, HTTPStatus.NOT_FOUND)
+                return
+            self.send_json({"conversation": conversation})
         elif path == "/api/workflow/runs":
             self.send_json({"items": read_workflow_runs()})
         elif path == "/api/license/status":
@@ -2063,6 +2534,34 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path.startswith("/api/conversations/"):
+            conversation_id = unquote(path.removeprefix("/api/conversations/"))
+            deleted = delete_conversation(conversation_id)
+            self.send_json({"status": "ok", "deleted": deleted})
+        else:
+            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
+    def do_PATCH(self) -> None:
+        parsed = urlparse(self.path)
+        path = parsed.path
+        try:
+            payload = self.read_json_body()
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path.startswith("/api/conversations/"):
+            conversation_id = unquote(path.removeprefix("/api/conversations/"))
+            conversation = rename_conversation(conversation_id, payload.get("title", ""))
+            if not conversation:
+                self.send_json({"error": "conversation not found"}, HTTPStatus.NOT_FOUND)
+                return
+            self.send_json({"status": "ok", "conversation": conversation})
+        else:
+            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
@@ -2074,6 +2573,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
 
         if path == "/api/config":
             self.send_json(save_config(payload))
+        elif path == "/api/conversations":
+            conversation = create_conversation(payload.get("title", "新对话"))
+            self.send_json({"status": "ok", "conversation": conversation}, HTTPStatus.CREATED)
         elif path == "/api/chat":
             config = load_config(include_secret=True)
             if payload.get("force_local"):
@@ -2088,8 +2590,13 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 source["inbox_id"] = payload.get("inbox_id")
             if payload.get("demo"):
                 source["demo"] = True
-            reply = local_agent_reply(message, config, source=source)
-            self.save_conversation_turn(message, reply)
+            conversation_id = payload.get("conversation_id") or ""
+            conversation = load_conversation(conversation_id) if conversation_id else create_conversation(conversation_title_from_message(message))
+            conversation_id = conversation.get("id") or conversation_id
+            history = conversation_history(conversation)
+            reply = local_agent_reply(message, config, source=source, conversation_history=history)
+            conversation = append_conversation_turn(conversation_id, message, reply)
+            reply["conversation"] = {"id": conversation.get("id"), "title": conversation.get("title"), "updated_at": conversation.get("updated_at")}
             self.send_json(reply)
         elif path == "/api/llm/test":
             config = load_config(include_secret=True)
@@ -2246,6 +2753,18 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         path = CONVERSATIONS_DIR / (datetime.now().strftime("%Y-%m-%d") + ".jsonl")
         append_jsonl(path, item)
 
+    def is_client_disconnect(self, exc: BaseException) -> bool:
+        return isinstance(exc, (BrokenPipeError, ConnectionAbortedError, ConnectionResetError)) or getattr(exc, "winerror", None) in {10053, 10054}
+
+    def safe_write(self, data: bytes) -> bool:
+        try:
+            self.wfile.write(data)
+            return True
+        except OSError as exc:
+            if self.is_client_disconnect(exc):
+                return False
+            raise
+
     def serve_file(self, path: Path) -> None:
         try:
             resolved = path.resolve()
@@ -2260,23 +2779,32 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 return
             content_type = mimetypes.guess_type(str(resolved))[0] or "application/octet-stream"
             data = resolved.read_bytes()
+        except OSError:
+            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Could not read file")
+            return
+        try:
             self.send_response(HTTPStatus.OK)
             self.send_cors_headers()
             self.send_header("Content-Type", content_type + "; charset=utf-8" if content_type.startswith("text/") else content_type)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
-            self.wfile.write(data)
-        except OSError:
-            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Could not read file")
+            self.safe_write(data)
+        except OSError as exc:
+            if not self.is_client_disconnect(exc):
+                raise
 
     def send_json(self, data: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
-        self.send_response(status)
-        self.send_cors_headers()
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_cors_headers()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.safe_write(body)
+        except OSError as exc:
+            if not self.is_client_disconnect(exc):
+                raise
 
     def send_cors_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1")

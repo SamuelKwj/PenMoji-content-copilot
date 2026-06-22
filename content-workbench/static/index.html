@@ -469,7 +469,11 @@
 
     .spark-board { max-height: calc(100vh - 164px); }
     .material-list { max-height: 38vh; }
-    .output-board { max-height: calc(62vh - 112px); }
+    .output-board { max-height: calc(38vh - 90px); }
+    .topic-panel-body { display: grid; gap: 10px; max-height: calc(42vh - 110px); overflow: auto; }
+    .topic-section { border: 1px solid var(--line); border-radius: 8px; padding: 9px; background: var(--panel-soft); }
+    .topic-section h3 { margin: 0 0 6px; font-size: 13px; }
+    .topic-section pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 12px; line-height: 1.55; color: var(--text); max-height: 130px; overflow: auto; }
 
     .spark-card,
     .material-card,
@@ -480,6 +484,56 @@
       padding: 9px;
       font-size: 13px;
       transition: border-color .16s ease, background .16s ease, transform .16s ease;
+    }
+
+    .spark-card {
+      padding: 6px 7px;
+      border-radius: 8px;
+    }
+
+    .spark-card:not(.expanded) .detail-toggle {
+      display: none;
+    }
+
+    .spark-row {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) 54px;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .spark-index,
+    .spark-score-fixed {
+      flex: 0 0 auto;
+    }
+
+    .spark-title-marquee {
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      line-height: 1.35;
+      font-weight: 650;
+    }
+
+    .spark-title-track {
+      display: inline-block;
+      min-width: max-content;
+      padding-left: 0;
+      animation: spark-title-marquee-scroll 12s linear infinite;
+    }
+
+    .spark-card:hover .spark-title-track {
+      animation-play-state: paused;
+    }
+
+    @keyframes spark-title-marquee-scroll {
+      0%, 18% { transform: translateX(0); }
+      82%, 100% { transform: translateX(calc(-100% + 120px)); }
+    }
+
+    .spark-title-marquee::-webkit-scrollbar {
+      display: none;
     }
 
     .spark-card:hover,
@@ -507,10 +561,9 @@
     }
 
     .spark-title {
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
+      white-space: nowrap;
       overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .spark-card.expanded .spark-title {
@@ -877,6 +930,76 @@
       display: none;
     }
 
+    .compact-body {
+      padding-top: 0;
+    }
+
+    .left-workflow-body {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 0;
+    }
+
+    .sidebar-section {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sidebar-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .conversation-list {
+      display: grid;
+      gap: 8px;
+      max-height: 190px;
+      overflow: auto;
+    }
+
+    .conversation-card {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 9px 10px;
+      background: rgba(255,255,255,.55);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      text-align: left;
+    }
+
+    .conversation-card.active {
+      border-color: rgba(139, 92, 55, .55);
+      box-shadow: 0 8px 18px rgba(91,61,42,.10);
+    }
+
+    .conversation-title {
+      font-weight: 700;
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .conversation-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+
+    .renameConversation,
+    .deleteConversation {
+      min-height: 28px;
+      padding: 4px 8px;
+    }
+
     .quick-row {
       display: flex;
       align-items: center;
@@ -1060,6 +1183,7 @@
       <div class="top-actions">
         <span class="pill" id="versionPill">v0.1.0</span>
         <span class="pill" id="statusText">连接中</span>
+        <span class="pill warn" id="modelStatusText">模型未测试</span>
         <button class="demo-mode" id="runDemoFlow" type="button">演示模式</button>
         <button class="secondary" id="resetDemoFlow" type="button">清理演示</button>
         <button class="secondary" id="refreshAll">刷新</button>
@@ -1071,19 +1195,31 @@
     <div class="workspace" id="workspace">
       <aside class="column left-column" id="sparkColumn">
         <button class="collapse-rail" id="expandSparkPanel" type="button">展开火花</button>
-        <section class="panel">
+        <section class="panel" id="leftWorkflowPanel">
           <div class="panel-head">
             <div>
-              <h2>火花看板</h2>
-              <p class="muted">未评分时只显示初筛线索；正式分数来自 Mosmori 评分引擎。</p>
+              <h2>创作整理</h2>
             </div>
             <div class="panel-actions">
-              <span class="pill" id="sparkCount">0 条</span>
+              <button class="secondary" id="newConversation" type="button">新建</button>
               <button class="secondary collapse-toggle" id="toggleSparkPanel" type="button" aria-expanded="true">收起</button>
             </div>
           </div>
-          <div class="panel-body">
-            <div class="spark-board" id="sparkBoard"></div>
+          <div class="panel-body left-workflow-body">
+            <div class="sidebar-section">
+              <div class="sidebar-section-head">
+                <h3>对话</h3>
+                <span class="tiny">新建 / 切换 / 删除</span>
+              </div>
+              <div class="conversation-list" id="conversationList"></div>
+            </div>
+            <div class="sidebar-section">
+              <div class="sidebar-section-head">
+                <h3>火花看板</h3>
+                <span class="pill" id="sparkCount">0 条</span>
+              </div>
+              <div class="spark-board" id="sparkBoard"></div>
+            </div>
           </div>
         </section>
       </aside>
@@ -1116,7 +1252,7 @@
               </div>
               <div class="quick-row">
                 <button class="quick-chip" data-prompt="我是做口播内容，平台抖音，赛道是个人IP，请先记住这个定位。">补充定位</button>
-                <button class="quick-chip" data-prompt="固化这个灵感：">固化灵感</button>
+                <button class="quick-chip" data-prompt="我想收录一个灵感，请引导我说清楚。">收录灵感</button>
                 <button class="quick-chip" data-prompt="审核这个灵感：">审核</button>
                 <button class="quick-chip" data-prompt="写视频脚本：">写脚本</button>
               </div>
@@ -1163,6 +1299,36 @@
             <div class="output-board" id="outputBoard"></div>
           </div>
         </section>
+
+        <section class="panel" id="topicPanel">
+          <div class="panel-head">
+            <div>
+              <h2>选题面板</h2>
+              <p class="muted" id="topicPanelScopeText">点选题后显示稿件、预测、发布、复盘。</p>
+            </div>
+            <div class="panel-actions">
+              <button class="secondary" id="refreshTopicPanel" type="button">刷新</button>
+            </div>
+          </div>
+          <div class="panel-body topic-panel-body">
+            <article class="topic-section">
+              <h3>当前稿件</h3>
+              <pre id="topicScriptContent">尚未选择选题。</pre>
+            </article>
+            <article class="topic-section">
+              <h3>预测日志</h3>
+              <pre id="topicPredictionContent">尚未选择选题。</pre>
+            </article>
+            <article class="topic-section">
+              <h3>发布状态</h3>
+              <pre id="topicPublishContent">尚未选择选题。</pre>
+            </article>
+            <article class="topic-section">
+              <h3>复盘</h3>
+              <pre id="topicRetroContent">尚未选择选题。</pre>
+            </article>
+          </div>
+        </section>
       </aside>
     </div>
   </div>
@@ -1191,6 +1357,7 @@
             <button id="saveConfig">保存配置</button>
             <button class="secondary" id="testModel">测试模型</button>
           </div>
+          <div class="tiny" id="modelTestResult">模型尚未测试。保存配置后点击“测试模型”。</div>
         </div>
 
         <div class="settings-section">
@@ -1227,6 +1394,7 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const STAGE_LABELS = {
+      chat: "普通对话",
       spark_solidify: "灵感固化",
       guided_workflow: "从第一步开始",
       on_demand_production: "当前步骤",
@@ -1246,7 +1414,9 @@
     let demoRunning = false;
     let demoView = false;
     let activeOutputContext = null;
-    let composerFocused = false;
+    let activeConversationId = "";
+    let conversations = [];
+    let composerFocused = true;
     const scoringSparkIds = new Set();
     const expandedSparkIds = new Set();
     const DEMO_TOPIC = "普通人为什么做个人IP总是半途而废";
@@ -1273,6 +1443,20 @@
     function setStatus(text, ok = true) {
       $("statusText").textContent = text;
       $("statusText").className = ok ? "pill good" : "pill warn";
+    }
+
+    function setModelStatus(text, ok = false) {
+      const node = $("modelStatusText");
+      if (!node) return;
+      node.textContent = text;
+      node.className = ok ? "pill good" : "pill warn";
+    }
+
+    function setModelTestResult(text, ok = false) {
+      const node = $("modelTestResult");
+      if (!node) return;
+      node.textContent = text;
+      node.className = ok ? "tiny good" : "tiny warn";
     }
 
     function showToast(text) {
@@ -1341,6 +1525,100 @@
       if (hints) hints.hidden = true;
     }
 
+    function renderConversationList() {
+      const list = $("conversationList");
+      if (!list) return;
+      list.innerHTML = "";
+      if (!conversations.length) {
+        list.innerHTML = `<p class="muted">暂无对话。发送第一句话或点击“新建”。</p>`;
+        return;
+      }
+      conversations.forEach((conversation) => {
+        const node = document.createElement("div");
+        node.className = `conversation-card ${conversation.id === activeConversationId ? "active" : ""}`;
+        node.innerHTML = `
+          <button class="secondary conversation-title" type="button">${escapeHtml(conversation.title || "新对话")}</button>
+          <div class="conversation-actions">
+            <button class="secondary renameConversation" type="button" title="重命名对话" data-rename-conversation>改名</button>
+            <button class="secondary deleteConversation" type="button" title="删除对话">删除</button>
+          </div>
+          <div class="tiny">${conversation.message_count || 0} 条 · ${escapeHtml((conversation.updated_at || "").slice(5, 16).replace("T", " "))}</div>
+        `;
+        node.querySelector(".conversation-title").addEventListener("click", () => openConversation(conversation.id));
+        node.querySelector(".renameConversation").addEventListener("click", async (event) => {
+          event.stopPropagation();
+          await renameConversation(conversation.id, conversation.title || "新对话");
+        });
+        node.querySelector(".deleteConversation").addEventListener("click", async (event) => {
+          event.stopPropagation();
+          await deleteConversation(conversation.id);
+        });
+        list.appendChild(node);
+      });
+    }
+
+    async function loadConversations() {
+      const data = await api("/api/conversations");
+      conversations = data.items || [];
+      if (!activeConversationId && conversations.length) activeConversationId = conversations[0].id;
+      renderConversationList();
+    }
+
+    async function createConversation() {
+      const result = await api("/api/conversations", { method: "POST", body: JSON.stringify({ title: "新对话" }) });
+      activeConversationId = result.conversation?.id || "";
+      $("chatLog").innerHTML = `<div class="starter-hints" id="starterHints"><button class="starter-hint" data-prompt="我有一个选题：普通人为什么做个人IP总是半途而废？帮我先判断值不值得做。">判断一个选题值不值得做</button><button class="starter-hint" data-prompt="我是做个人IP口播，平台抖音，赛道是商业诊断。请先记住这个定位。">先补充我的账号定位</button><button class="starter-hint" data-prompt="基于最近的火花看板，帮我挑一个最适合今天写脚本的方向。">从火花里挑今天的脚本方向</button></div>`;
+      bindPromptButtons();
+      addMessage("agent", "新对话已创建。直接说你的观察，我会先整理方向，再问你是否收录。")
+      await loadConversations();
+      keepComposerOpen();
+    }
+
+    async function openConversation(conversationId) {
+      const data = await api(`/api/conversations/${encodeURIComponent(conversationId)}`);
+      const conversation = data.conversation || {};
+      activeConversationId = conversation.id || conversationId;
+      $("chatLog").innerHTML = "";
+      (conversation.messages || []).forEach((message) => {
+        if (message.role === "user") addMessage("user", message.content || "");
+        if (message.role === "assistant") addMessage("agent", message.content || message.reply?.summary || "", message.reply ? replyActions(message.reply) : []);
+      });
+      if (!(conversation.messages || []).length) addMessage("agent", "这是一个空对话。直接继续说。")
+      renderConversationList();
+      keepComposerOpen();
+    }
+
+    async function renameConversation(conversationId, currentTitle = "新对话") {
+      const nextTitle = window.prompt("给这个对话改个名字", currentTitle || "新对话");
+      if (nextTitle === null) return;
+      const title = nextTitle.trim();
+      if (!title) return;
+      const result = await api(`/api/conversations/${encodeURIComponent(conversationId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title })
+      });
+      if (result.conversation?.id) activeConversationId = result.conversation.id;
+      await loadConversations();
+      keepComposerOpen();
+    }
+
+    async function deleteConversation(conversationId) {
+      await api(`/api/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
+      if (activeConversationId === conversationId) {
+        activeConversationId = "";
+        $("chatLog").innerHTML = "";
+        addMessage("agent", "对话已删除。你可以新建一个，或直接发送第一句话。")
+      }
+      await loadConversations();
+      keepComposerOpen();
+    }
+
+    function keepComposerOpen() {
+      composerFocused = true;
+      $("chatInput").focus();
+      updateComposerState();
+    }
+
     function updateComposerState(options = {}) {
       const composer = $("chatComposer");
       const input = $("chatInput");
@@ -1364,43 +1642,60 @@
       const rawMessage = (forcedMessage || $("chatInput").value).trim();
       const message = forcedMessage ? rawMessage : composeChatMessage(rawMessage);
       if (!message) return;
+      const wasDemoView = demoView;
+      demoView = false;
       $("chatInput").value = "";
-      composerFocused = false;
-      $("chatInput").blur();
+      composerFocused = true;
       if (selectedMaterial) clearSelectedMaterial({ clearInput: false, quiet: true });
       updateComposerState();
       addMessage("user", message);
-      addLocalSpark(extractSparkText(message), "对话输入");
-      const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message }) });
+      const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message, conversation_id: activeConversationId }) });
+      if (reply.stage !== "chat") addLocalSpark(extractSparkText(message), "对话输入");
       addMessage("agent", formatReply(reply), replyActions(reply));
+      if (reply.result?.answer_source === "model") setModelStatus("模型已连接", true);
+      if (reply.result?.answer_source === "local_fallback") setModelStatus("模型未连接", false);
       if (reply.result?.topic) {
         addLocalSpark(reply.result.topic, "已处理");
+        const routeFlowId = reply.result?.skill_route?.flow_id || "";
         activeOutputContext = {
           mode: "spark",
           demo: false,
           sparkKey: reply.result.topic,
           inboxId: "",
           topic: reply.result.topic,
-          flowId: flowIdForTopic(reply.result.topic),
+          flowId: routeFlowId || flowIdForTopic(reply.result.topic),
         };
+      } else if (wasDemoView && reply.stage === "chat") {
+        activeOutputContext = null;
       }
+      if (reply.conversation?.id) activeConversationId = reply.conversation.id;
+      await loadConversations();
       await loadFiles();
+      await loadTopicPanel();
       renderSparkBoard();
+      keepComposerOpen();
     }
 
     function formatReply(reply) {
+      if (reply.stage === "chat") {
+        const source = reply.result?.answer_source === "model" ? "模型生成" : "本地规则回复";
+        const note = reply.result?.llm_note ? `\n来源：${source} · ${reply.result.llm_note}` : `\n来源：${source}`;
+        return `${reply.summary}${note}`;
+      }
       const artifacts = (reply.result?.artifacts || []).filter((item) => item.type !== "manifest");
       const generated = artifacts.map((item) => `- ${item.label}`).join("\n");
       const llmNote = reply.result?.llm_note ? `\n模型：${reply.result.llm_note}` : "";
       const next = reply.result?.next_step?.prompt ? `\n下一步：${reply.result.next_step.label}` : "";
-      const stage = STAGE_LABELS[reply.stage] || reply.stage;
       if (!generated && reply.result?.options) {
         return `${reply.summary}\n\n可继续：${reply.result.options.join("、")}`;
       }
-      return `${reply.summary}${llmNote}${next}\n\n当前阶段：${stage}${generated ? "\n\n已生成：\n" + generated : ""}`;
+      return `${reply.summary}${llmNote}${next}${generated ? "\n\n已生成：\n" + generated : ""}`;
     }
 
     function replyActions(reply) {
+      if (reply.stage === "chat" && Array.isArray(reply.result?.suggested_actions)) {
+        return reply.result.suggested_actions;
+      }
       const step = reply.result?.next_step;
       if (!step?.prompt || step.label === "完成") return [];
       return [{ label: `继续：${step.label}`, prompt: step.prompt }];
@@ -1552,17 +1847,14 @@
         node.className = `spark-card ${isExpanded ? "expanded" : ""} ${selectedMaterial === content ? "active" : ""} ${activeOutputContext?.sparkKey === key ? "active" : ""}`;
         node.title = [evaluation.title, ...evaluation.factors.map(scoreFactorText)].join(" / ");
         node.innerHTML = `
-          <div class="score-row">
-            <div class="spark-source">
-              <span class="rank-badge">#${index + 1}</span>
-              <span class="tiny">${escapeHtml(item.source || typeLabel(item.type))}</span>
-            </div>
-            <button class="score-pill ${evaluation.state === "pending" ? "pending" : ""}" type="button" data-score-spark ${isScoring ? "disabled" : ""}>${escapeHtml(isScoring ? "评分中" : evaluation.label)}</button>
+          <div class="spark-row">
+            <span class="rank-badge spark-index">#${index + 1}</span>
+            <div class="spark-title spark-title-marquee"><span class="spark-title-track">${escapeHtml(content)}</span></div>
+            <button class="score-pill spark-score-fixed ${evaluation.state === "pending" ? "pending" : ""}" type="button" data-score-spark ${isScoring ? "disabled" : ""}>${escapeHtml(isScoring ? "评分中" : evaluation.label)}</button>
           </div>
-          <div class="spark-title">${escapeHtml(content)}</div>
-          <button class="secondary detail-toggle" type="button" data-toggle-details>${isExpanded ? "收起详情" : "详情"}</button>
+          <button class="secondary detail-toggle" type="button" data-toggle-details>${isExpanded ? "收起" : "详情"}</button>
           <div class="spark-details">
-            <div class="score-source-note">${escapeHtml(evaluation.sourceLabel)}</div>
+            <div class="score-source-note">${escapeHtml(item.source || typeLabel(item.type))} · ${escapeHtml(evaluation.sourceLabel)}</div>
             <div class="score-breakdown">
               ${evaluation.factors.map((factor) => `<span class="score-factor">${escapeHtml(scoreFactorText(factor))}</span>`).join("")}
             </div>
@@ -1817,7 +2109,7 @@
       selectedMaterial = content;
       selectedMaterialLabel = label;
       selectedMaterialDisplay = display || content;
-      selectedMaterialPrompt = `${label === "spark" ? "固化这个灵感" : "基于这个素材继续"}：`;
+      selectedMaterialPrompt = `${label === "spark" ? "基于这个火花继续聊" : "基于这个素材继续"}：`;
       $("chatInput").value = selectedMaterialPrompt;
       $("chatInput").focus();
       updateComposerState();
@@ -1867,6 +2159,43 @@
       fileGroups = data.groups || {};
       renderOutputBoard();
       if (materialTab === "files") renderMaterialList();
+    }
+
+    function renderTopicPanel(data = {}) {
+      const scope = $("topicPanelScopeText");
+      const sections = data.sections || {};
+      if (!data.status || data.status !== "ok") {
+        if (scope) scope.textContent = "点选题后显示稿件、预测、发布、复盘。";
+        ["topicScriptContent", "topicPredictionContent", "topicPublishContent", "topicRetroContent"].forEach((id) => {
+          const node = $(id);
+          if (node) node.textContent = "尚未选择选题。";
+        });
+        return;
+      }
+      if (scope) scope.textContent = `当前选题：${data.topic || activeOutputContext?.topic || "未命名"}`;
+      const mapping = {
+        topicScriptContent: sections.script,
+        topicPredictionContent: sections.prediction,
+        topicPublishContent: sections.publish,
+        topicRetroContent: sections.retro,
+      };
+      Object.entries(mapping).forEach(([id, section]) => {
+        const node = $(id);
+        if (!node) return;
+        node.textContent = section?.content?.trim() || "尚未生成。";
+      });
+    }
+
+    async function loadTopicPanel() {
+      if (!activeOutputContext?.topic && !activeOutputContext?.flowId) {
+        renderTopicPanel({});
+        return;
+      }
+      const params = new URLSearchParams();
+      if (activeOutputContext.flowId) params.set("flow_id", activeOutputContext.flowId);
+      if (activeOutputContext.topic) params.set("topic", activeOutputContext.topic);
+      const data = await api(`/api/topic?${params.toString()}`);
+      renderTopicPanel(data);
     }
 
     function contentFiles(files) {
@@ -1945,9 +2274,11 @@
 
     function groupLabel(group) {
       return {
+        topics: "选题档案",
         deliverables: "生成产物",
         scripts: "脚本库",
         predictions: "预测库",
+        videos: "视频库",
         archive: "灵感归档"
       }[group] || "文件";
     }
@@ -2011,7 +2342,7 @@
       if (activeOutputContext?.demo) {
         scope.textContent = cards.length ? "演示视图：只显示本次样本链路产物。" : "演示视图：等待生成本次样本产物。";
       } else if (activeOutputContext) {
-        scope.textContent = "当前火花链路：优先显示与所选火花相关的产物。";
+        scope.textContent = "当前选题链路：优先显示与所选题相关的产物。";
       } else {
         scope.textContent = "全局视图：显示最新产物。";
       }
@@ -2182,11 +2513,24 @@
     }
 
     async function testModel() {
+      setModelStatus("模型测试中", false);
+      setModelTestResult("正在测试模型连接...", false);
       await saveConfig();
       try {
         const result = await api("/api/llm/test", { method: "POST", body: JSON.stringify({}) });
-        showToast(`模型测试成功：${result.reply || result.note}`);
+        const testedAt = result.tested_at ? result.tested_at.replace("T", " ").slice(0, 19) : "刚刚";
+        if (result.ok) {
+          setModelStatus("模型已连接", true);
+          setModelTestResult(`连接成功 · ${result.model || "未命名模型"} · ${testedAt} · ${result.reply || result.note}`, true);
+          showToast("模型测试成功");
+        } else {
+          setModelStatus("模型连接失败", false);
+          setModelTestResult(`连接失败 · ${testedAt} · ${result.error || result.note || "未知错误"}`, false);
+          showToast("模型测试失败，详情见设置面板");
+        }
       } catch (error) {
+        setModelStatus("模型连接失败", false);
+        setModelTestResult(`连接失败 · ${error.message}`, false);
         setStatus(`模型测试失败：${error.message}`, false);
       }
     }
@@ -2336,26 +2680,32 @@
       });
     });
 
-    document.querySelectorAll("[data-prompt]").forEach((button) => {
-      button.addEventListener("click", () => {
-        hideStarterHints();
-        $("chatInput").value = button.dataset.prompt;
-        $("chatInput").focus();
-        updateComposerState();
+    function bindPromptButtons() {
+      document.querySelectorAll("[data-prompt]").forEach((button) => {
+        if (button.dataset.boundPrompt === "true") return;
+        button.dataset.boundPrompt = "true";
+        button.addEventListener("click", () => {
+          hideStarterHints();
+          $("chatInput").value = button.dataset.prompt;
+          keepComposerOpen();
+        });
       });
-    });
+    }
+
+    bindPromptButtons();
     $("runDemoFlow").addEventListener("click", runDemoFlow);
     $("resetDemoFlow").addEventListener("click", resetDemoFlow);
     $("toggleTheme").addEventListener("click", toggleTheme);
 
     $("sendChat").addEventListener("click", () => sendChat());
+    $("newConversation").addEventListener("click", createConversation);
     $("chatInput").addEventListener("focus", () => {
       composerFocused = true;
       updateComposerState();
     });
     $("chatInput").addEventListener("blur", () => {
       window.setTimeout(() => {
-        composerFocused = false;
+        composerFocused = true;
         updateComposerState();
       }, 120);
     });
@@ -2369,9 +2719,7 @@
       updateComposerState();
     });
     $("chatLog").addEventListener("scroll", () => {
-      if (!composerFocused && !$("chatInput").value.trim() && !selectedMaterial) {
-        updateComposerState({ forceCompact: true });
-      }
+      updateComposerState();
     });
     $("refreshAll").addEventListener("click", async () => {
       await loadStatus();
@@ -2399,7 +2747,8 @@
     $("activateLicense").addEventListener("click", activateLicense);
     $("linkDevice").addEventListener("click", linkDevice);
     $("checkDeviceLink").addEventListener("click", checkDeviceLink);
-    $("loadFiles").addEventListener("click", loadFiles);
+    $("loadFiles").addEventListener("click", async () => { await loadFiles(); await loadTopicPanel(); });
+    $("refreshTopicPanel").addEventListener("click", loadTopicPanel);
     $("pullCloud").addEventListener("click", pullCloud);
     restoreCollapsedState();
 
@@ -2407,10 +2756,11 @@
       try {
         await loadStatus();
         await loadConfig();
+        await loadConversations();
         await loadInbox();
         await loadFiles();
-        addMessage("agent", "我已经准备好了。直接输入灵感，也可以把内容形态、平台、赛道、人设一起写在对话里。左侧会自动形成火花看板，右侧可以选择素材进入对话。");
-        updateComposerState();
+        if (!activeConversationId) addMessage("agent", "我已经准备好了。直接输入灵感，也可以把内容形态、平台、赛道、人设一起写在对话里。左侧会自动形成火花看板，右侧可以选择素材进入对话。");
+        keepComposerOpen();
       } catch (error) {
         setStatus(error.message, false);
       }
