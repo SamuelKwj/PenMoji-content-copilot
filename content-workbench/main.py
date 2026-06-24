@@ -315,6 +315,41 @@ def update_inbox_item(item_id: str, updates: dict) -> dict | None:
     return updated
 
 
+def upsert_inbox_item(item: dict) -> dict:
+    items = read_jsonl(INBOX_PATH)
+    normalized = normalize_inspiration(item)
+    for index, existing in enumerate(items):
+        if existing.get("id") == normalized.get("id"):
+            merged = {**existing, **normalized}
+            items[index] = merged
+            rewrite_jsonl(INBOX_PATH, items)
+            return merged
+    append_jsonl(INBOX_PATH, normalized)
+    return normalized
+
+
+def confirmed_spark_item(topic: str, pending_spark: dict, artifacts: list[dict], config: dict) -> dict:
+    flow_id = hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
+    item = normalize_inspiration(
+        {
+            "id": pending_spark.get("id") or str(uuid.uuid4()),
+            "type": "text",
+            "content": topic,
+            "tags": pending_spark.get("tags") if isinstance(pending_spark.get("tags"), list) else [],
+            "sync_status": "pulled",
+            "capture_intent": "collect",
+            "title_candidates": pending_spark.get("title_options", []),
+            "flow_id": flow_id,
+            "flow_topic": topic,
+            "artifact_paths": [entry.get("path") for entry in artifacts if entry.get("path")],
+        }
+    )
+    archive_path = mirror_to_project_archive(item, config)
+    if archive_path:
+        item["local_path"] = archive_path
+    return upsert_inbox_item(item)
+
+
 def normalize_inspiration(item: dict, user_id: str = "local-user") -> dict:
     allowed_types = {"text", "voice", "image", "link", "video_link"}
     item_type = item.get("type") if item.get("type") in allowed_types else "text"
@@ -2614,9 +2649,10 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
         return session_reply
 
     state = load_session_state()
-    confirmed_pending = is_confirm_collect(text) and bool(state.get("pending_spark", {}).get("content"))
+    pending_spark = state.get("pending_spark", {}) if isinstance(state.get("pending_spark"), dict) else {}
+    confirmed_pending = is_confirm_collect(text) and bool(pending_spark.get("content"))
     if confirmed_pending:
-        text = f"固化这个灵感：{state['pending_spark']['content']}"
+        text = f"固化这个灵感：{pending_spark['content']}"
 
     stage, deliverables = route_deliverables(text)
     topic = extract_topic(text)
@@ -2685,6 +2721,9 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
     rendered = render_deliverables(topic, deliverables, config)
     skill_meta = execute_skill_deliverables(topic, rendered, deliverables, config)
     source_for_artifacts = dict(source or {})
+    if confirmed_pending:
+        source_for_artifacts["flow_topic"] = topic
+        source_for_artifacts["flow_id"] = hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
     if "score" in deliverables:
         score_data = isolated_blind_score(topic, config)
         source_for_artifacts["score_skill_route"] = score_data.get("skill_route", {})
@@ -2692,11 +2731,13 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
     artifacts = write_deliverable_artifacts(text, stage, deliverables, rendered, llm_text, config, source_for_artifacts, skill_meta)
     if artifacts:
         worklog.append(f"已落盘 {len(artifacts)} 个产物文件。")
+    spark_item = None
     if confirmed_pending:
+        spark_item = confirmed_spark_item(topic, pending_spark, artifacts, config)
         state["pending_spark"] = {}
         state["collecting_spark"] = False
         save_session_state(state)
-        worklog.append("已清空待确认火花。")
+        worklog.append("已写入火花列表，并清空待确认火花。")
     if "prediction" in deliverables and rendered.get("prediction"):
         run = lock_prediction_run(topic, rendered["prediction"], artifacts, source)
         worklog.append(f"已锁定发布预测记录：{run['id']}。")
@@ -2724,6 +2765,8 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
         if skill_meta:
             result["skill_meta"] = skill_meta
             result["skill_routes"] = {key: meta.get("skill_route", {}) for key, meta in skill_meta.items()}
+        if spark_item:
+            result["spark_item"] = spark_item
         if "score" in deliverables:
             result["skill_route"] = score_data.get("skill_route", {})
             result["score_meta"] = {

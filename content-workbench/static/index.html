@@ -1648,7 +1648,12 @@
       updateComposerState();
       addMessage("user", message);
       const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message, conversation_id: activeConversationId }) });
-      if (shouldShowInSparkBoard(reply)) addLocalSpark(extractSparkText(message), "待确认火花");
+      if (reply.result?.spark_item) {
+        localSparks = localSparks.filter((spark) => spark.content !== reply.result.spark_item.content);
+        inboxItems = [reply.result.spark_item, ...inboxItems.filter((spark) => spark.id !== reply.result.spark_item.id)];
+      } else if (shouldShowInSparkBoard(reply)) {
+        addLocalSpark(extractSparkText(message), "待确认火花");
+      }
       addMessage("agent", formatReply(reply), replyActions(reply));
       if (reply.result?.answer_source === "model") setModelStatus("模型已连接", true);
       if (reply.result?.answer_source === "local_fallback") setModelStatus("模型未连接", false);

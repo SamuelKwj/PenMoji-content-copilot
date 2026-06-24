@@ -197,6 +197,16 @@ def run() -> dict:
         confirm_collect = wb.local_agent_reply("确认收录", config)
         results.append(expect(confirm_collect.get("stage") == "spark_solidify", "session:confirm-collect-solidifies", str(confirm_collect)))
         results.append(expect(bool(confirm_collect.get("result", {}).get("artifacts")), "session:confirm-collect-artifacts", str(confirm_collect)))
+        inbox_after_confirm = wb.read_jsonl(wb.INBOX_PATH)
+        persisted_confirm = next((item for item in inbox_after_confirm if item.get("content") == "我发现普通人学AI为什么越学越焦虑"), None)
+        results.append(expect(bool(persisted_confirm), "session:confirm-collect-persists-inbox", json.dumps(inbox_after_confirm, ensure_ascii=False)[:800]))
+        results.append(expect(confirm_collect.get("result", {}).get("spark_item", {}).get("content") == "我发现普通人学AI为什么越学越焦虑", "session:confirm-collect-returns-spark-item", str(confirm_collect.get("result", {}))))
+        if persisted_confirm:
+            results.append(expect(persisted_confirm.get("sync_status") != "processed", "session:confirmed-spark-actionable", str(persisted_confirm)))
+            results.append(expect(bool(persisted_confirm.get("artifact_paths")) and bool(persisted_confirm.get("flow_id")) and bool(persisted_confirm.get("flow_topic")), "session:confirmed-spark-has-flow-metadata", str(persisted_confirm)))
+            expected_confirm_dir = wb.project_path_from_config(config) / "topics" / f"{persisted_confirm.get('flow_id')}_{wb.safe_slug(persisted_confirm.get('flow_topic', ''))}"
+            persisted_paths = [Path(path) for path in persisted_confirm.get("artifact_paths", [])]
+            results.append(expect(persisted_paths and all(expected_confirm_dir in path.parents for path in persisted_paths), "session:confirmed-spark-artifacts-under-flow-topic", f"expected={expected_confirm_dir}; paths={persisted_paths}"))
 
         conversation = wb.create_conversation("测试对话")
         reply_one = wb.local_agent_reply("你好", config, conversation_history=[])
@@ -349,6 +359,7 @@ def run() -> dict:
         leaked_frontend_patterns = [item for item in forbidden_frontend_patterns if item in static_text]
         results.append(expect(not leaked_frontend_patterns, "frontend:no-auto-spark-from-chat-or-business-reply", str(leaked_frontend_patterns)))
         results.append(expect('function shouldShowInSparkBoard' in static_text and 'shouldShowInSparkBoard(reply)' in static_text, "frontend:spark-board-explicit-gate", "Spark board writes require explicit gate"))
+        results.append(expect('reply.result?.spark_item' in static_text and 'inboxItems = [reply.result.spark_item' in static_text, "frontend:confirmed-spark-item-enters-board", "Confirmed persisted sparks must update inboxItems"))
 
         prompt_path = APP_ROOT / "prompts" / "content_creator_workflow.md"
         results.append(expect(prompt_path.exists(), "prompt:generic-workflow-file-exists", str(prompt_path)))
