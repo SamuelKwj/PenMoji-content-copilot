@@ -319,13 +319,52 @@ def upsert_inbox_item(item: dict) -> dict:
     items = read_jsonl(INBOX_PATH)
     normalized = normalize_inspiration(item)
     for index, existing in enumerate(items):
-        if existing.get("id") == normalized.get("id"):
+        same_id = existing.get("id") == normalized.get("id")
+        same_content = normalized.get("content") and existing.get("content") == normalized.get("content")
+        same_flow = normalized.get("flow_id") and existing.get("flow_id") == normalized.get("flow_id")
+        if same_id or same_content or same_flow:
             merged = {**existing, **normalized}
+            existing_paths = existing.get("artifact_paths") if isinstance(existing.get("artifact_paths"), list) else []
+            new_paths = normalized.get("artifact_paths") if isinstance(normalized.get("artifact_paths"), list) else []
+            if existing_paths or new_paths:
+                merged["artifact_paths"] = list(dict.fromkeys([*existing_paths, *new_paths]))
             items[index] = merged
             rewrite_jsonl(INBOX_PATH, items)
             return merged
     append_jsonl(INBOX_PATH, normalized)
     return normalized
+
+
+def ensure_workflow_inbox_item(topic: str, artifacts: list[dict], config: dict, source: dict | None = None) -> dict:
+    source_data = dict(source or {})
+    flow_topic = str(source_data.get("flow_topic") or topic)
+    flow_id = str(source_data.get("flow_id") or hashlib.sha256(flow_topic.encode("utf-8")).hexdigest()[:12])
+    existing = next(
+        (
+            item
+            for item in read_jsonl(INBOX_PATH)
+            if item.get("flow_id") == flow_id or item.get("flow_topic") == flow_topic or item.get("content") == flow_topic
+        ),
+        {},
+    )
+    paths = [entry.get("path") for entry in artifacts if entry.get("path")]
+    item = normalize_inspiration(
+        {
+            **existing,
+            "id": existing.get("id") or source_data.get("inbox_id") or str(uuid.uuid4()),
+            "type": existing.get("type") or "text",
+            "content": existing.get("content") or flow_topic,
+            "sync_status": existing.get("sync_status") if existing.get("sync_status") not in {"", None, "processed"} else "pulled",
+            "capture_intent": existing.get("capture_intent") or "collect",
+            "flow_id": flow_id,
+            "flow_topic": flow_topic,
+            "artifact_paths": paths,
+        }
+    )
+    archive_path = mirror_to_project_archive(item, config)
+    if archive_path:
+        item["local_path"] = archive_path
+    return upsert_inbox_item(item)
 
 
 def confirmed_spark_item(topic: str, pending_spark: dict, artifacts: list[dict], config: dict) -> dict:
@@ -650,7 +689,7 @@ def call_chat_provider(message: str, config: dict, conversation_history: list[di
     messages = [
         {"role": "system", "content": build_workflow_system_prompt(config)},
     ]
-    for history_item in (conversation_history or [])[-8:]:
+    for history_item in (conversation_history or [])[-16:]:
         role = "assistant" if history_item.get("role") == "assistant" else "user"
         content = str(history_item.get("content") or "").strip()
         if content:
@@ -773,6 +812,7 @@ def extract_topic(message: str) -> str:
         r"^(发布登记|登记发布|已发布|发出去了|发布了|复盘这个选题|复盘这个灵感|复盘|生成复盘|T\+3复盘|t\+3复盘)",
         r"^(固化灵感|固化这个灵感|审核这个灵感|审核这个选题|给这个选题评分|给这个灵感评分|打分这个选题|打分这个灵感|评分这个选题|评分这个灵感)",
         r"^(预测这个选题|预测这个灵感|打分这个选题|打分这个灵感|评分这个选题|评分这个灵感|写视频脚本|生成静态页文案|生成静态页|标题封面句|标题|发布文案)",
+        r"^(chat_materialized)",
     ]
     changed = True
     while changed:
@@ -2635,8 +2675,55 @@ def handle_session_stage(text: str, worklog: list[str]) -> dict | None:
     return None
 
 
+def infer_chat_workflow_topic(message: str, assistant_text: str, conversation_history: list[dict]) -> str:
+    combined_parts = [item.get("content", "") for item in conversation_history if item.get("content")]
+    combined_parts.append(assistant_text or "")
+    combined = "\n".join(combined_parts)
+    titles = re.findall(r"《([^》]{2,80})》", combined)
+    if titles:
+        return titles[-1].strip()
+    user_candidates = [
+        str(item.get("content", "")).strip()
+        for item in conversation_history
+        if item.get("role") != "assistant" and str(item.get("content", "")).strip()
+    ]
+    user_candidates.append(message.strip())
+    for candidate in user_candidates:
+        if re.fullmatch(r"[A-Da-d1-4]|不需要|需要|可以|确认|收录|确认收录", candidate):
+            continue
+        cleaned = re.sub(r"^(记录|收录|固化|保存)(这个)?(灵感|火花|想法)?[，,：:\s]*", "", candidate).strip()
+        if len(cleaned) >= 4:
+            return cleaned[:80]
+    return extract_topic(message)
+
+
+def infer_chat_workflow_artifacts(message: str, assistant_text: str, conversation_history: list[dict]) -> dict:
+    content = assistant_text or ""
+    if not content:
+        return {}
+    deliverable = ""
+    if re.search(r"盲打分结果|总分[:：]|\|\s*维度\s*\|", content):
+        deliverable = "score"
+    elif re.search(r"##\s*预测结果|预测结果|播放量（?72小时|完播率", content):
+        deliverable = "prediction"
+    elif re.search(r"##\s*口播脚本|口播脚本[:：]|【开头", content):
+        deliverable = "video_script"
+    elif re.search(r"口播大纲|###\s*口播大纲|下面是大纲", content):
+        deliverable = "seed_draft"
+    elif re.search(r"先记录这个灵感|收录为火花|标题方向已确认", content) and re.search(r"记录灵感|收录|固化|标题方向", message + content):
+        deliverable = "spark_card"
+    if not deliverable:
+        return {}
+    return {
+        "stage": "chat_materialized",
+        "deliverables": [deliverable],
+        "topic": infer_chat_workflow_topic(message, content, conversation_history),
+    }
+
+
 def local_agent_reply(message: str, config: dict, source: dict | None = None, conversation_history: list[dict] | None = None) -> dict:
     text = message.strip()
+    chat_materialized_output = ""
     initial_stage, initial_deliverables = route_deliverables(text)
     worklog = [
         "读取当前创作者配置。",
@@ -2683,38 +2770,45 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
         content, llm_note = call_chat_provider(text, config, conversation_history=conversation_history)
         worklog.append(llm_note)
         answer_source = "model" if content else "local_fallback"
-        if not content:
-            if "未配置 API Key" in llm_note:
-                content = "我是 PenMoji 的内容工作台助手。现在模型还没连上，我只能先用本地规则回答。你可以在设置里配置 API Base URL、API Key 和模型名，然后点“测试模型”。"
-            elif "未配置 API Base URL" in llm_note:
-                content = "我是 PenMoji 的内容工作台助手。现在缺 API Base URL，模型还没连上。先去设置里补接口地址，再点“测试模型”。"
-            else:
-                content = f"我是 PenMoji 的内容工作台助手。模型调用失败，所以这次没有生成式回答。错误：{llm_note}"
-        return {
-            "id": str(uuid.uuid4()),
-            "created_at": now_iso(),
-            "status": "ok",
-            "stage": stage,
-            "summary": content,
-            "worklog": worklog,
-            "actions": [],
-            "result": {
-                "llm_used": answer_source == "model",
-                "llm_note": llm_note,
-                "answer_source": answer_source,
-                "answer": content,
-                "artifacts": [],
-                "suggested_actions": [
-                    {"label": "收录一个灵感", "prompt": "我想收录一个灵感，请引导我说清楚。"},
-                    {"label": "判断选题", "prompt": "判断这个选题值不值得做："},
-                    {"label": "写脚本", "prompt": "写视频脚本："},
-                ],
-            },
-        }
+        inferred = infer_chat_workflow_artifacts(text, content, conversation_history or [])
+        if inferred:
+            stage = inferred["stage"]
+            deliverables = inferred["deliverables"]
+            topic = inferred["topic"]
+            chat_materialized_output = content
+        else:
+            if not content:
+                if "未配置 API Key" in llm_note:
+                    content = "我是 PenMoji 的内容工作台助手。现在模型还没连上，我只能先用本地规则回答。你可以在设置里配置 API Base URL、API Key 和模型名，然后点“测试模型”。"
+                elif "未配置 API Base URL" in llm_note:
+                    content = "我是 PenMoji 的内容工作台助手。现在缺 API Base URL，模型还没连上。先去设置里补接口地址，再点“测试模型”。"
+                else:
+                    content = f"我是 PenMoji 的内容工作台助手。模型调用失败，所以这次没有生成式回答。错误：{llm_note}"
+            return {
+                "id": str(uuid.uuid4()),
+                "created_at": now_iso(),
+                "status": "ok",
+                "stage": stage,
+                "summary": content,
+                "worklog": worklog,
+                "actions": [],
+                "result": {
+                    "llm_used": answer_source == "model",
+                    "llm_note": llm_note,
+                    "answer_source": answer_source,
+                    "answer": content,
+                    "artifacts": [],
+                    "suggested_actions": [
+                        {"label": "收录一个灵感", "prompt": "我想收录一个灵感，请引导我说清楚。"},
+                        {"label": "判断选题", "prompt": "判断这个选题值不值得做："},
+                        {"label": "写脚本", "prompt": "写视频脚本："},
+                    ],
+                },
+            }
 
-    llm_text = ""
+    llm_text = "" if not chat_materialized_output else chat_materialized_output
     llm_note = "未请求 LLM。"
-    if deliverables:
+    if deliverables and not chat_materialized_output:
         llm_text, llm_note = call_model_provider(build_llm_prompt(text, deliverables, config), config)
         worklog.append(llm_note)
 
@@ -2722,6 +2816,9 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
     skill_meta = execute_skill_deliverables(topic, rendered, deliverables, config)
     source_for_artifacts = dict(source or {})
     if confirmed_pending:
+        source_for_artifacts["flow_topic"] = topic
+        source_for_artifacts["flow_id"] = hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
+    elif stage == "chat_materialized":
         source_for_artifacts["flow_topic"] = topic
         source_for_artifacts["flow_id"] = hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
     if "score" in deliverables:
@@ -2738,6 +2835,9 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
         state["collecting_spark"] = False
         save_session_state(state)
         worklog.append("已写入火花列表，并清空待确认火花。")
+    elif stage == "chat_materialized":
+        spark_item = ensure_workflow_inbox_item(topic, artifacts, config, source_for_artifacts)
+        worklog.append("已同步到火花列表和选题档案。")
     if "prediction" in deliverables and rendered.get("prediction"):
         run = lock_prediction_run(topic, rendered["prediction"], artifacts, source)
         worklog.append(f"已锁定发布预测记录：{run['id']}。")

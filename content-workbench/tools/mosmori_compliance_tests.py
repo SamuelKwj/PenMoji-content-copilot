@@ -44,6 +44,19 @@ def artifact_names(reply: dict) -> list[str]:
     return names
 
 
+def post_json(handler_cls, path: str, payload: dict) -> dict:
+    captured: dict = {}
+    handler = object.__new__(handler_cls)
+    handler.path = path
+    handler.headers = {"Content-Length": str(len(json.dumps(payload, ensure_ascii=False).encode("utf-8")))}
+    handler.rfile = None
+    handler.send_json = lambda data, status=200: captured.update({"data": data, "status": status})
+    handler.send_error = lambda status, message="": captured.update({"error": message, "status": status})
+    handler.read_json_body = lambda: payload
+    handler.do_POST()
+    return captured.get("data", captured)
+
+
 class FailingModelHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -201,6 +214,30 @@ def run() -> dict:
         persisted_confirm = next((item for item in inbox_after_confirm if item.get("content") == "我发现普通人学AI为什么越学越焦虑"), None)
         results.append(expect(bool(persisted_confirm), "session:confirm-collect-persists-inbox", json.dumps(inbox_after_confirm, ensure_ascii=False)[:800]))
         results.append(expect(confirm_collect.get("result", {}).get("spark_item", {}).get("content") == "我发现普通人学AI为什么越学越焦虑", "session:confirm-collect-returns-spark-item", str(confirm_collect.get("result", {}))))
+        chat_history = [
+            {"role": "user", "content": "记录灵感，人类在自寻死路"},
+            {"role": "assistant", "content": "标题方向：《我们一边求生，一边亲手挖坟》"},
+            {"role": "user", "content": "A"},
+            {"role": "assistant", "content": "下面是大纲，口播结构：### 口播大纲：《我们一边求生，一边亲手挖坟》"},
+        ]
+        original_call_chat_provider = wb.call_chat_provider
+        wb.call_chat_provider = lambda message, cfg, conversation_history=None: (
+            "## 口播脚本：《我们一边求生，一边亲手挖坟》\n\n【开头】人类一边求生，一边亲手挖坟。",
+            "测试模型返回",
+        )
+        materialized = wb.local_agent_reply(
+            "2",
+            config,
+            source={"flow_topic": "2", "flow_id": "badliteral"},
+            conversation_history=chat_history,
+        )
+        wb.call_chat_provider = original_call_chat_provider
+        materialized_item = materialized.get("result", {}).get("spark_item", {})
+        materialized_paths = [Path(item.get("path", "")) for item in materialized.get("result", {}).get("artifacts", [])]
+        expected_materialized_dir = wb.project_path_from_config(config) / "topics" / f"{wb.hashlib.sha256('我们一边求生，一边亲手挖坟'.encode('utf-8')).hexdigest()[:12]}_{wb.safe_slug('我们一边求生，一边亲手挖坟')}"
+        results.append(expect(materialized.get("stage") == "chat_materialized" and "video_script" in [item.get("type") for item in materialized.get("result", {}).get("deliverables", [])], "chat-workflow:number-choice-materializes-artifact", json.dumps(materialized, ensure_ascii=False)[:800]))
+        results.append(expect(materialized_item.get("content") == "我们一边求生，一边亲手挖坟" and materialized_item.get("flow_topic") == "我们一边求生，一边亲手挖坟", "chat-workflow:persisted-inbox-real-topic", str(materialized_item)))
+        results.append(expect(materialized_paths and all(expected_materialized_dir in path.parents for path in materialized_paths), "chat-workflow:artifacts-under-real-topic-not-literal-choice", f"expected={expected_materialized_dir}; paths={materialized_paths}"))
         if persisted_confirm:
             results.append(expect(persisted_confirm.get("sync_status") != "processed", "session:confirmed-spark-actionable", str(persisted_confirm)))
             results.append(expect(bool(persisted_confirm.get("artifact_paths")) and bool(persisted_confirm.get("flow_id")) and bool(persisted_confirm.get("flow_topic")), "session:confirmed-spark-has-flow-metadata", str(persisted_confirm)))
@@ -218,6 +255,15 @@ def run() -> dict:
         results.append(expect(len(loaded_conversation.get("messages", [])) == 2, "conversation:persist-turn", str(loaded_conversation)))
         conversations = wb.list_conversations()
         results.append(expect(any(item.get("id") == conversation["id"] for item in conversations), "conversation:list-includes-created", str(conversations)))
+        before_conversation_count = len(wb.list_conversations())
+        created_reply = post_json(wb.WorkbenchHandler, "/api/chat", {"message": "连续会话第一句"})
+        created_id = created_reply.get("conversation", {}).get("id", "")
+        continued_reply = post_json(wb.WorkbenchHandler, "/api/chat", {"message": "连续会话第二句", "conversation_id": created_id})
+        after_conversation_count = len(wb.list_conversations())
+        continued_loaded = wb.load_conversation(created_id)
+        results.append(expect(created_id and continued_reply.get("conversation", {}).get("id") == created_id, "conversation:http-preserves-active-id", str({"created": created_reply.get("conversation"), "continued": continued_reply.get("conversation")})))
+        results.append(expect(after_conversation_count == before_conversation_count + 1 and len(continued_loaded.get("messages", [])) == 4, "conversation:http-one-thread-no-extra-conversation", str({"before": before_conversation_count, "after": after_conversation_count, "loaded": continued_loaded})))
+        wb.delete_conversation(created_id)
         wb.delete_conversation(conversation["id"])
         results.append(expect(not wb.load_conversation(conversation["id"]).get("messages"), "conversation:delete-clears-messages", str(wb.load_conversation(conversation["id"]))))
 

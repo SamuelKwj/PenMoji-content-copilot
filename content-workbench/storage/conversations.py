@@ -120,7 +120,7 @@ def append_conversation_turn_file(
     return conversation
 
 
-def conversation_history_for_llm(conversation: dict, limit: int = 8) -> list[dict]:
+def conversation_history_for_llm(conversation: dict, limit: int = 16) -> list[dict]:
     history = []
     for item in conversation.get("messages", [])[-limit:]:
         role = "assistant" if item.get("role") == "assistant" else "user"
