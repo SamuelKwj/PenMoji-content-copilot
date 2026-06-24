@@ -2412,6 +2412,21 @@ def strip_collect_prefix(text: str) -> str:
     return re.sub(r"^(收录这个灵感|固化这个灵感|收录|固化|保存这个灵感|把这个灵感存下来)[：:\s]*", "", text.strip()).strip()
 
 
+EMPTY_ACTION_PATTERNS = [
+    r"^(收录这个灵感|固化这个灵感|收录|固化)[：:\s]*$",
+    r"^(审核这个灵感|审核这个选题|审稿|审核)[：:\s]*$",
+    r"^(写视频脚本|写脚本|视频脚本|口播脚本)[：:\s]*$",
+    r"^(判断这个选题值不值得做|判断这个选题|判断|验证|检查)[：:\s]*$",
+    r"^(评分|打分|给这个选题评分|给这个灵感评分)[：:\s]*$",
+    r"^(预测|预判|预测这个选题)[：:\s]*$",
+]
+
+
+def is_empty_action_request(text: str) -> bool:
+    cleaned = text.strip()
+    return any(re.match(pattern, cleaned) for pattern in EMPTY_ACTION_PATTERNS)
+
+
 def is_empty_collect_request(text: str) -> bool:
     return bool(re.match(r"^(收录这个灵感|固化这个灵感|收录|固化)[：:\s]*$", text.strip()))
 
@@ -2543,14 +2558,29 @@ def handle_session_stage(text: str, worklog: list[str]) -> dict | None:
             {"profile": state.get("profile", {})},
         )
 
-    if is_empty_collect_request(text) or re.match(r"^我想收录一个灵感", text):
+    if is_empty_action_request(text) or re.match(r"^我想收录一个灵感", text):
         state["pending_spark"] = {}
         state["collecting_spark"] = True
         save_session_state(state)
+        if re.search(r"审核|审稿|判断|验证|检查", text):
+            prompt = "可以，但你还没给具体内容。把要审核的灵感/选题贴出来，我再判断值不值得做。"
+            log_note = "识别为空审核/判断模板，改为追问而不是生成审核产物。"
+        elif re.search(r"脚本|口播", text):
+            prompt = "可以，但你还没给具体选题。先把这条视频想讲的观察或判断发我，我再写脚本。"
+            log_note = "识别为空脚本模板，改为追问而不是生成脚本产物。"
+        elif re.search(r"评分|打分", text):
+            prompt = "可以，但你还没给待评分内容。把完整灵感或脚本贴出来，我再进入盲打分。"
+            log_note = "识别为空评分模板，改为追问而不是生成评分产物。"
+        elif re.search(r"预测|预判", text):
+            prompt = "可以，但你还没给具体选题。把选题或脚本贴出来，我再做发布前预测。"
+            log_note = "识别为空预测模板，改为追问而不是生成预测产物。"
+        else:
+            prompt = "可以。你先不用填表，直接说一句你的观察：你最近看到什么现象？它让你不舒服、好奇，还是想反驳？"
+            log_note = "识别为空收录请求，改为追问而不是直接落盘。"
         return make_session_reply(
             "collect_guidance",
-            "可以。你先不用填表，直接说一句你的观察：你最近看到什么现象？它让你不舒服、好奇，还是想反驳？",
-            worklog + ["识别为空收录请求，改为追问而不是直接落盘。"],
+            prompt,
+            worklog + [log_note],
             {"suggested_actions": [{"label": "我发现...", "prompt": "我发现"}, {"label": "我想反驳...", "prompt": "我想反驳"}]},
         )
 

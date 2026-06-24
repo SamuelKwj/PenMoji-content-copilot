@@ -134,6 +134,12 @@ def run() -> dict:
         results.append(expect(not chat_reply.get("result", {}).get("artifacts"), "chat:no-artifacts", str(chat_reply)))
         results.append(expect(not wb.read_jsonl(wb.INBOX_PATH), "chat:no-inbox-write", str(wb.read_jsonl(wb.INBOX_PATH))))
         results.append(expect(chat_reply.get("result", {}).get("answer_source") in {"model", "local_fallback"}, "chat:answer-source", str(chat_reply)))
+        for casual_message in ["你好", "今天状态如何", "随便聊两句", "你能帮我做什么"]:
+            casual_reply = wb.local_agent_reply(casual_message, config)
+            results.append(expect(casual_reply.get("stage") == "chat", f"chat:casual-stage:{casual_message}", str(casual_reply)))
+            results.append(expect(not casual_reply.get("result", {}).get("artifacts"), f"chat:no-artifacts:{casual_message}", str(casual_reply)))
+            results.append(expect("spark_card" not in json.dumps(casual_reply, ensure_ascii=False), f"chat:no-spark-card:{casual_message}", json.dumps(casual_reply, ensure_ascii=False)[:500]))
+        results.append(expect(not wb.read_jsonl(wb.INBOX_PATH), "chat:repeated-casual-no-inbox-write", str(wb.read_jsonl(wb.INBOX_PATH))))
 
         material_chat_reply = wb.local_agent_reply("你是谁？\n\n火花：普通人为什么做个人IP总是半途而废", config)
         results.append(expect(material_chat_reply.get("stage") == "chat", "chat:material-label-does-not-force-spark", str(material_chat_reply)))
@@ -167,6 +173,12 @@ def run() -> dict:
         empty_collect = wb.local_agent_reply("收录这个灵感：", config)
         results.append(expect(empty_collect.get("stage") == "collect_guidance", "session:empty-collect-guidance", str(empty_collect)))
         results.append(expect(not empty_collect.get("result", {}).get("artifacts"), "session:empty-collect-no-artifacts", str(empty_collect)))
+        results.append(expect(not wb.read_jsonl(wb.INBOX_PATH), "session:empty-collect-no-inbox-write", str(wb.read_jsonl(wb.INBOX_PATH))))
+        for empty_guide in ["审核这个灵感：", "写视频脚本：", "判断这个选题值不值得做："]:
+            guide_reply = wb.local_agent_reply(empty_guide, config)
+            results.append(expect(guide_reply.get("stage") in {"collect_guidance", "chat"}, f"guide:empty-template-no-production-stage:{empty_guide}", str(guide_reply)))
+            results.append(expect(not guide_reply.get("result", {}).get("artifacts"), f"guide:empty-template-no-artifacts:{empty_guide}", str(guide_reply)))
+        results.append(expect(not wb.read_jsonl(wb.INBOX_PATH), "guide:empty-template-no-inbox-write", str(wb.read_jsonl(wb.INBOX_PATH))))
         guided_observation = wb.local_agent_reply("就是，感觉现在生产内容的速度空前，但是我能如此，别人自然也可以如此，那么内容生成不就廉价了？", config)
         results.append(expect(guided_observation.get("stage") == "spark_candidate", "session:guided-observation-candidate", str(guided_observation)))
         results.append(expect(not guided_observation.get("result", {}).get("artifacts"), "session:guided-observation-no-artifacts", str(guided_observation)))
@@ -329,6 +341,14 @@ def run() -> dict:
         leaked_subtitles = [item for item in removed_subtitles if item in static_text]
         results.append(expect(not leaked_subtitles, "frontend:no-extra-subtitle-copy", str(leaked_subtitles)))
         results.append(expect("composerFocused = true;" in static_text and "blur();" not in static_text, "frontend:composer-stays-expanded", "composer should stay open after send"))
+        forbidden_frontend_patterns = [
+            'if (reply.stage !== "chat") addLocalSpark',
+            'addLocalSpark(reply.result.topic',
+            '左侧会自动形成火花看板',
+        ]
+        leaked_frontend_patterns = [item for item in forbidden_frontend_patterns if item in static_text]
+        results.append(expect(not leaked_frontend_patterns, "frontend:no-auto-spark-from-chat-or-business-reply", str(leaked_frontend_patterns)))
+        results.append(expect('function shouldShowInSparkBoard' in static_text and 'shouldShowInSparkBoard(reply)' in static_text, "frontend:spark-board-explicit-gate", "Spark board writes require explicit gate"))
 
         prompt_path = APP_ROOT / "prompts" / "content_creator_workflow.md"
         results.append(expect(prompt_path.exists(), "prompt:generic-workflow-file-exists", str(prompt_path)))

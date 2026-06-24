@@ -1648,17 +1648,16 @@
       updateComposerState();
       addMessage("user", message);
       const reply = await api("/api/chat", { method: "POST", body: JSON.stringify({ message, conversation_id: activeConversationId }) });
-      if (reply.stage !== "chat") addLocalSpark(extractSparkText(message), "对话输入");
+      if (shouldShowInSparkBoard(reply)) addLocalSpark(extractSparkText(message), "待确认火花");
       addMessage("agent", formatReply(reply), replyActions(reply));
       if (reply.result?.answer_source === "model") setModelStatus("模型已连接", true);
       if (reply.result?.answer_source === "local_fallback") setModelStatus("模型未连接", false);
-      if (reply.result?.topic) {
-        addLocalSpark(reply.result.topic, "已处理");
+      if (reply.result?.topic && shouldFocusTopicPanel(reply)) {
         const routeFlowId = reply.result?.skill_route?.flow_id || "";
         activeOutputContext = {
-          mode: "spark",
+          mode: "topic",
           demo: false,
-          sparkKey: reply.result.topic,
+          sparkKey: "",
           inboxId: "",
           topic: reply.result.topic,
           flowId: routeFlowId || flowIdForTopic(reply.result.topic),
@@ -1697,6 +1696,15 @@
       const step = reply.result?.next_step;
       if (!step?.prompt || step.label === "完成") return [];
       return [{ label: `继续：${step.label}`, prompt: step.prompt }];
+    }
+
+    function shouldShowInSparkBoard(reply) {
+      return reply?.stage === "spark_candidate" && Boolean(reply?.result?.pending_spark?.content);
+    }
+
+    function shouldFocusTopicPanel(reply) {
+      const artifacts = reply?.result?.artifacts || [];
+      return Array.isArray(artifacts) && artifacts.some((item) => item.type !== "manifest" && item.type !== "ledger");
     }
 
     function extractSparkText(message) {
@@ -2787,7 +2795,7 @@
         await loadConversations();
         await loadInbox();
         await loadFiles();
-        if (!activeConversationId) addMessage("agent", "我已经准备好了。直接输入灵感，也可以把内容形态、平台、赛道、人设一起写在对话里。左侧会自动形成火花看板，右侧可以选择素材进入对话。");
+        if (!activeConversationId) addMessage("agent", "我已经准备好了。普通问题会留在聊天里；明确收录并确认后，才会进入火花看板。右侧可以选择素材进入对话。");
         keepComposerOpen();
       } catch (error) {
         setStatus(error.message, false);
