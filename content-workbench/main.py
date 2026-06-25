@@ -33,7 +33,7 @@ from storage.conversations import append_conversation_turn_file, conversation_hi
 from storage.conversations import conversation_path as storage_conversation_path
 from storage.conversations import conversation_title_from_message, create_conversation_file
 from storage.conversations import delete_conversation_file, list_conversation_files, load_conversation_file, rename_conversation_file
-from workflow.spark import is_confirm_collect, is_empty_collect_request, looks_like_spark_candidate_text
+from workflow.spark import is_confirm_collect, is_empty_collect_request
 from workflow.spark import strip_collect_prefix, title_options_for_spark
 
 
@@ -2553,22 +2553,6 @@ def looks_like_profile_update(text: str) -> bool:
     return bool(re.search(r"我是做|我做|平台|赛道|人设|定位", text) and detect_profile_updates(text))
 
 
-def looks_like_spark_candidate(text: str, state: dict | None = None) -> bool:
-    cleaned = text.strip()
-    if len(cleaned) < 10:
-        return False
-    if re.search(r"^(你是谁|你好|hello|hi|谢谢|测试)", cleaned, re.I):
-        return False
-    if re.fullmatch(r"[\w\u4e00-\u9fff\s，,、/+-]{2,18}", cleaned) and not re.search(r"我发现|我觉得|为什么|越来越|焦虑|困境|问题|现象|矛盾|代价|真相", cleaned):
-        return False
-    if route_deliverables(cleaned)[0] != "chat":
-        return False
-    if state and state.get("collecting_spark"):
-        return True
-    signals = r"我发现|我觉得|为什么|越来越|普通人|焦虑|困境|问题|现象|矛盾|代价|真相|内容|创作|生产|廉价|出头|注意力|同质化|门槛|速度"
-    return bool(re.search(signals, cleaned))
-
-
 def make_session_reply(stage: str, summary: str, worklog: list[str], result: dict) -> dict:
     return {
         "id": str(uuid.uuid4()),
@@ -2659,19 +2643,6 @@ def handle_session_stage(text: str, worklog: list[str]) -> dict | None:
             {"suggested_actions": [{"label": "我发现...", "prompt": "我发现"}, {"label": "我想反驳...", "prompt": "我想反驳"}]},
         )
 
-    if looks_like_spark_candidate(text, state):
-        titles = title_options_for_spark(text)
-        state["pending_spark"] = {"content": text, "title_options": titles, "created_at": now_iso()}
-        state["collecting_spark"] = False
-        save_session_state(state)
-        summary = "这个观察可以先留下，但我先不替你落盘。\n\n我抓到的核心是：" + text + "\n\n如果要继续，我建议先从这三个角度里挑一个：\n" + "\n".join(f"{idx + 1}. {title}" for idx, title in enumerate(titles)) + "\n\n你说“确认收录”我再写入；也可以直接回数字或让我改标题。"
-        return make_session_reply(
-            "spark_candidate",
-            summary,
-            worklog + ["识别为候选火花，已暂存到会话状态，等待确认。"],
-            {"pending_spark": state["pending_spark"], "suggested_actions": [{"label": "确认收录", "prompt": "确认收录"}, {"label": "判断选题", "prompt": f"判断这个选题值不值得做：{text}"}]},
-        )
-
     return None
 
 
@@ -2702,10 +2673,10 @@ def infer_chat_workflow_artifacts(message: str, assistant_text: str, conversatio
     if not content:
         return {}
     deliverable = ""
-    if re.search(r"盲打分结果|总分[:：]|\|\s*维度\s*\|", content):
-        deliverable = "score"
-    elif re.search(r"##\s*预测结果|预测结果|播放量（?72小时|完播率", content):
+    if re.search(r"##\s*预测结果|预测结果|播放量（?72小时|完播率", content):
         deliverable = "prediction"
+    elif re.search(r"盲打分结果|总分[:：]|\|\s*维度\s*\|", content):
+        deliverable = "score"
     elif re.search(r"##\s*口播脚本|口播脚本[:：]|【开头", content):
         deliverable = "video_script"
     elif re.search(r"口播大纲|###\s*口播大纲|下面是大纲", content):
@@ -2719,6 +2690,58 @@ def infer_chat_workflow_artifacts(message: str, assistant_text: str, conversatio
         "deliverables": [deliverable],
         "topic": infer_chat_workflow_topic(message, content, conversation_history),
     }
+
+
+def materialized_sections_from_conversation(conversation: dict) -> tuple[str, dict[str, str]]:
+    messages = conversation.get("messages", []) if isinstance(conversation, dict) else []
+    history = [{"role": item.get("role", "user"), "content": item.get("content", "")} for item in messages]
+    combined = "\n\n".join(str(item.get("content") or "") for item in messages if item.get("content"))
+    topic = infer_chat_workflow_topic(str(conversation.get("title") or ""), combined, history)
+    sections: dict[str, str] = {}
+    for item in messages:
+        if item.get("role") != "assistant":
+            continue
+        content = str(item.get("content") or "").strip()
+        inferred = infer_chat_workflow_artifacts("conversation_backfill", content, history)
+        deliverables = inferred.get("deliverables") or []
+        if not deliverables:
+            continue
+        key = deliverables[0]
+        if key not in sections or len(content) > len(sections[key]):
+            sections[key] = content
+    return topic, sections
+
+
+def materialize_conversation_artifacts(conversation: dict, config: dict) -> dict:
+    topic, sections = materialized_sections_from_conversation(conversation)
+    deliverable_order = ["spark_card", "seed_draft", "score", "video_script", "prediction"]
+    deliverables = [key for key in deliverable_order if key in sections]
+    if not topic or not deliverables:
+        return {"status": "skipped", "topic": topic, "deliverables": [], "artifacts": []}
+    rendered = render_deliverables(topic, deliverables, config)
+    for key in deliverables:
+        if sections.get(key):
+            rendered[key] = sections[key]
+    flow_id = hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
+    source = {
+        "flow_topic": topic,
+        "flow_id": flow_id,
+        "conversation_id": conversation.get("id", ""),
+        "conversation_title": conversation.get("title", ""),
+        "materialized_from_conversation": True,
+    }
+    artifacts = write_deliverable_artifacts(
+        f"chat_materialized：{topic}",
+        "chat_materialized",
+        deliverables,
+        rendered,
+        "",
+        config,
+        source,
+        {},
+    )
+    spark_item = ensure_workflow_inbox_item(topic, artifacts, config, source)
+    return {"status": "ok", "topic": topic, "deliverables": deliverables, "artifacts": artifacts, "spark_item": spark_item}
 
 
 def local_agent_reply(message: str, config: dict, source: dict | None = None, conversation_history: list[dict] | None = None) -> dict:
@@ -3042,6 +3065,15 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             conversation = append_conversation_turn(conversation_id, message, reply)
             reply["conversation"] = {"id": conversation.get("id"), "title": conversation.get("title"), "updated_at": conversation.get("updated_at")}
             self.send_json(reply)
+        elif path.startswith("/api/conversations/") and path.endswith("/materialize"):
+            conversation_id = unquote(path.removeprefix("/api/conversations/").removesuffix("/materialize"))
+            conversation = load_conversation(conversation_id)
+            if not conversation:
+                self.send_json({"error": "conversation not found"}, HTTPStatus.NOT_FOUND)
+                return
+            config = load_config(include_secret=False)
+            result = materialize_conversation_artifacts(conversation, config)
+            self.send_json({"status": "ok", **result})
         elif path == "/api/llm/test":
             config = load_config(include_secret=True)
             result = test_model_provider(config)

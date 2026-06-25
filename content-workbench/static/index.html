@@ -1386,6 +1386,20 @@
     </section>
   </div>
 
+  <div class="modal-backdrop" id="infoModalBackdrop" hidden>
+    <section class="modal info-modal" role="dialog" aria-modal="true" aria-labelledby="infoModalTitle">
+      <div class="panel-head">
+        <div>
+          <h2 id="infoModalTitle">提示</h2>
+          <p class="muted" id="infoModalBody"></p>
+        </div>
+        <div class="quick-row">
+          <button id="infoModalOk">确定</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <pre id="debugOutput" hidden>{}</pre>
   <div class="toast" id="toast" hidden></div>
 
@@ -1467,6 +1481,16 @@
       }, 2200);
     }
 
+    function showInfoModal(title, body) {
+      $("infoModalTitle").textContent = title;
+      $("infoModalBody").textContent = body;
+      $("infoModalBackdrop").hidden = false;
+    }
+
+    function closeInfoModal() {
+      $("infoModalBackdrop").hidden = true;
+    }
+
     async function loadStatus() {
       const status = await api("/api/status");
       $("versionPill").textContent = `v${status.version}`;
@@ -1494,7 +1518,7 @@
       };
       await api("/api/config", { method: "POST", body: JSON.stringify(payload) });
       await loadConfig();
-      showToast("配置已保存");
+      showInfoModal("配置已保存", "API 配置已经保存到本地。如果更换了模型或 API 地址，建议点「测试模型」确认连通性。");
     }
 
     function addMessage(role, text, actions = []) {
@@ -2740,6 +2764,10 @@
 
     $("sendChat").addEventListener("click", () => sendChat());
     $("newConversation").addEventListener("click", createConversation);
+    $("infoModalOk").addEventListener("click", closeInfoModal);
+    $("infoModalBackdrop").addEventListener("click", (e) => {
+      if (e.target === $("infoModalBackdrop")) closeInfoModal();
+    });
     $("chatInput").addEventListener("focus", () => {
       composerFocused = true;
       updateComposerState();

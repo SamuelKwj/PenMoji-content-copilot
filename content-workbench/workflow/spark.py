@@ -11,26 +11,16 @@ def is_empty_collect_request(text: str) -> bool:
     cleaned = text.strip()
     return bool(re.fullmatch(r"(固化|收录|整理|保存)(这个)?(灵感|火花|想法)?[:：\s]*", cleaned))
 
+def is_empty_collect_request(text: str) -> bool:
+    cleaned = text.strip()
+    return bool(re.fullmatch(r"(固化|收录|整理|保存)(这个)?(灵感|火花|想法)?[:：\s]*", cleaned))
+
 
 def is_confirm_collect(text: str) -> bool:
-    return bool(re.search(r"^(确认收录|就这个|收录吧|可以收录|确定收录|确认)", text.strip()))
+    return bool(re.search(r"^(确认收录|就这个|收录吧|可以收录|确定收录|确认|好了|可以了|好了吗|可以了吗|收录好了吗)", text.strip()))
 
 
-def looks_like_spark_candidate_text(text: str, route_stage: str, collecting_spark: bool = False) -> bool:
-    cleaned = text.strip()
-    if len(cleaned) < 10:
-        return False
-    if re.search(r"^(你是谁|你好|hello|hi|谢谢|测试)", cleaned, re.I):
-        return False
-    if route_stage != "chat":
-        return False
-    if collecting_spark:
-        return True
-    signals = r"我发现|我觉得|为什么|越来越|普通人|焦虑|困境|问题|现象|矛盾|代价|真相|内容|创作|生产|廉价|出头|注意力|同质化|门槛|速度"
-    return bool(re.search(signals, cleaned))
-
-
-def clean_spark_core(content: str) -> str:
+def strip_collect_prefix(content: str) -> str:
     core = strip_collect_prefix(content)
     core = re.sub(r"^(就是|感觉|我发现|我觉得|我认为|其实|现在|如今)[，,\s]*", "", core)
     core = re.sub(r"[。！？?]+$", "", core).strip()

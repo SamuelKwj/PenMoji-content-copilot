@@ -192,28 +192,7 @@ def run() -> dict:
             results.append(expect(guide_reply.get("stage") in {"collect_guidance", "chat"}, f"guide:empty-template-no-production-stage:{empty_guide}", str(guide_reply)))
             results.append(expect(not guide_reply.get("result", {}).get("artifacts"), f"guide:empty-template-no-artifacts:{empty_guide}", str(guide_reply)))
         results.append(expect(not wb.read_jsonl(wb.INBOX_PATH), "guide:empty-template-no-inbox-write", str(wb.read_jsonl(wb.INBOX_PATH))))
-        guided_observation = wb.local_agent_reply("就是，感觉现在生产内容的速度空前，但是我能如此，别人自然也可以如此，那么内容生成不就廉价了？", config)
-        results.append(expect(guided_observation.get("stage") == "spark_candidate", "session:guided-observation-candidate", str(guided_observation)))
-        results.append(expect(not guided_observation.get("result", {}).get("artifacts"), "session:guided-observation-no-artifacts", str(guided_observation)))
-        results.append(expect("确认收录" in guided_observation.get("summary", ""), "session:guided-observation-asks-confirm", guided_observation.get("summary", "")))
 
-        spark_candidate = wb.local_agent_reply("我发现普通人学AI为什么越学越焦虑", config)
-        session_state = wb.load_session_state()
-        title_options = session_state.get("pending_spark", {}).get("title_options", [])
-        results.append(expect(spark_candidate.get("stage") == "spark_candidate", "session:spark-candidate-stage", str(spark_candidate)))
-        results.append(expect(bool(session_state.get("pending_spark", {}).get("content")), "session:pending-spark-saved", str(session_state)))
-        results.append(expect(not spark_candidate.get("result", {}).get("artifacts"), "session:spark-candidate-no-artifacts", str(spark_candidate)))
-        results.append(expect(len(title_options) == 3, "spark:title-options-count", str(title_options)))
-        empty_view_titles = [title for title in title_options if "到底卡在哪" in title or title.endswith("？")]
-        results.append(expect(not empty_view_titles, "spark:title-options-have-viewpoint", str(title_options)))
-
-        confirm_collect = wb.local_agent_reply("确认收录", config)
-        results.append(expect(confirm_collect.get("stage") == "spark_solidify", "session:confirm-collect-solidifies", str(confirm_collect)))
-        results.append(expect(bool(confirm_collect.get("result", {}).get("artifacts")), "session:confirm-collect-artifacts", str(confirm_collect)))
-        inbox_after_confirm = wb.read_jsonl(wb.INBOX_PATH)
-        persisted_confirm = next((item for item in inbox_after_confirm if item.get("content") == "我发现普通人学AI为什么越学越焦虑"), None)
-        results.append(expect(bool(persisted_confirm), "session:confirm-collect-persists-inbox", json.dumps(inbox_after_confirm, ensure_ascii=False)[:800]))
-        results.append(expect(confirm_collect.get("result", {}).get("spark_item", {}).get("content") == "我发现普通人学AI为什么越学越焦虑", "session:confirm-collect-returns-spark-item", str(confirm_collect.get("result", {}))))
         chat_history = [
             {"role": "user", "content": "记录灵感，人类在自寻死路"},
             {"role": "assistant", "content": "标题方向：《我们一边求生，一边亲手挖坟》"},
@@ -238,12 +217,29 @@ def run() -> dict:
         results.append(expect(materialized.get("stage") == "chat_materialized" and "video_script" in [item.get("type") for item in materialized.get("result", {}).get("deliverables", [])], "chat-workflow:number-choice-materializes-artifact", json.dumps(materialized, ensure_ascii=False)[:800]))
         results.append(expect(materialized_item.get("content") == "我们一边求生，一边亲手挖坟" and materialized_item.get("flow_topic") == "我们一边求生，一边亲手挖坟", "chat-workflow:persisted-inbox-real-topic", str(materialized_item)))
         results.append(expect(materialized_paths and all(expected_materialized_dir in path.parents for path in materialized_paths), "chat-workflow:artifacts-under-real-topic-not-literal-choice", f"expected={expected_materialized_dir}; paths={materialized_paths}"))
-        if persisted_confirm:
-            results.append(expect(persisted_confirm.get("sync_status") != "processed", "session:confirmed-spark-actionable", str(persisted_confirm)))
-            results.append(expect(bool(persisted_confirm.get("artifact_paths")) and bool(persisted_confirm.get("flow_id")) and bool(persisted_confirm.get("flow_topic")), "session:confirmed-spark-has-flow-metadata", str(persisted_confirm)))
-            expected_confirm_dir = wb.project_path_from_config(config) / "topics" / f"{persisted_confirm.get('flow_id')}_{wb.safe_slug(persisted_confirm.get('flow_topic', ''))}"
-            persisted_paths = [Path(path) for path in persisted_confirm.get("artifact_paths", [])]
-            results.append(expect(persisted_paths and all(expected_confirm_dir in path.parents for path in persisted_paths), "session:confirmed-spark-artifacts-under-flow-topic", f"expected={expected_confirm_dir}; paths={persisted_paths}"))
+
+        backfill_conversation = {
+            "id": "backfill-test",
+            "title": "记录灵感，人类在自寻死路",
+            "messages": [
+                {"role": "user", "content": "记录灵感，人类在自寻死路"},
+                {"role": "assistant", "content": "标题方向已确认：**《我们一边求生，一边亲手挖坟》**。"},
+                {"role": "assistant", "content": "### 口播大纲：《我们一边求生，一边亲手挖坟》\\n\\n**开头钩子**：现在最勤奋的人，反而最可能被淘汰。"},
+                {"role": "assistant", "content": "**盲打分结果：**\\n\\n| 维度 | 分数（1-5） | 评语 |\\n|------|------------|------|\\n| 钩子吸引力 | 4 | 有冲击力 |\\n\\n**总分：20/25（B+）**"},
+                {"role": "assistant", "content": "## 口播脚本：《我们一边求生，一边亲手挖坟》\\n\\n**【开头 · 钩子 · 15秒】**\\n\\n你可能没意识到——现在最勤奋的人，反而是最容易被淘汰的人。"},
+                {"role": "assistant", "content": "## 预测结果\\n\\n| 维度 | 预测值 | 说明 |\\n|------|--------|------|\\n| 播放量（72小时） | 1.5万 - 3万 | 标题冲击力强 |"},
+            ],
+        }
+        backfill = wb.materialize_conversation_artifacts(backfill_conversation, config)
+        backfill_item = backfill.get("spark_item", {})
+        backfill_paths = [Path(item.get("path", "")) for item in backfill.get("artifacts", [])]
+        backfill_types = {item.get("type") for item in backfill.get("artifacts", [])}
+        expected_backfill_dir = wb.project_path_from_config(config) / "topics" / f"{wb.hashlib.sha256('我们一边求生，一边亲手挖坟'.encode('utf-8')).hexdigest()[:12]}_{wb.safe_slug('我们一边求生，一边亲手挖坟')}"
+        results.append(expect(backfill.get("status") == "ok" and backfill_item.get("content") == "我们一边求生，一边亲手挖坟", "backfill:conversation-materializes-inbox-real-topic", json.dumps(backfill, ensure_ascii=False)[:800]))
+        results.append(expect({"seed_draft", "score", "video_script", "prediction"}.issubset(backfill_types), "backfill:conversation-materializes-all-deliverables", str(backfill_types)))
+        results.append(expect(backfill_paths and all(expected_backfill_dir in path.parents for path in backfill_paths), "backfill:artifacts-under-topic", f"expected={expected_backfill_dir}; paths={backfill_paths}"))
+
+
 
         conversation = wb.create_conversation("测试对话")
         reply_one = wb.local_agent_reply("你好", config, conversation_history=[])
