@@ -1,45 +1,132 @@
 # PenMoji Content Copilot
 
-PenMoji 是 Mosmori 出品的本地优先内容创作工作台，面向自媒体创作者、内容团队和个人 IP 运营者。它把零散灵感、素材、脚本、发布文案和复盘记录放进同一个工作流里，帮助用户从“想到一个点子”推进到“可发布、可复盘、可持续优化”的内容资产。
+PenMoji 是一个本地优先的内容创作工作台，帮助自媒体创作者和内容团队把零散灵感推进成可评分、可审核、可发布、可复盘的内容资产。
 
-## GitHub Description
+它不是一个单点写作工具，而是一个从“手机上突然想到一个选题”到“桌面端完成脚本、发布文案和复盘记录”的完整内容工作流。
+
+## 为什么做这个
+
+内容生产的问题通常不是缺少 AI 工具，而是流程断裂：
+
+- 灵感散在微信、备忘录、评论区和临时截图里。
+- 选题靠感觉判断，缺少统一评分标准。
+- 脚本、发布文案、素材和复盘记录分散保存。
+- 团队协作时，很难追踪一个选题从想法到发布后的表现。
+
+PenMoji 把这些环节收进一个本地可控的工作台，让创作者能围绕同一个内容资产持续推进，而不是反复在不同工具之间搬运信息。
+
+## 核心能力
+
+- 手机灵感采集：用微信小程序快速收集想法、链接、评论观察和素材线索。
+- 桌面火花看板：把灵感沉淀为可管理的选题，并支持评分、排序和筛选。
+- 内容生产链路：围绕选题生成审核意见、视频脚本、发布文案和静态页文案。
+- 发布与复盘：记录发布结果、复盘数据和下一轮优化方向。
+- 本地优先：用户数据、密钥、对话和产物默认保存在本机。
+- 演示友好：内置本地同步验证服务，方便展示从手机采集到桌面生产的闭环。
+
+## 界面预览
+
+### 桌面内容工作台
+
+![PenMoji 桌面内容工作台](docs/desktop-workbench.png)
+
+### 火花评分看板
+
+![PenMoji 火花评分看板](docs/spark-board.png)
+
+### 小程序灵感采集
+
+![PenMoji 小程序灵感采集](docs/mobile-capture.jpg)
+
+## 适合谁
+
+- 自媒体创作者：需要把灵感、脚本、发布和复盘放进一个稳定流程。
+- 内容团队：需要统一选题判断、沉淀内容资产、减少协作信息丢失。
+- 个人 IP 运营者：需要持续生产、复用素材、记录长期内容表现。
+- 自托管用户：希望内容数据和 API Key 默认留在本地。
+
+## 工作流
 
 ```text
-PenMoji 是 Mosmori 出品的本地优先内容创作工作台，连接桌面工作台、小程序灵感采集和本地同步服务，把零散灵感推进为评分、审核、脚本、发布文案与复盘记录。
+手机采集灵感
+  -> 桌面端拉取火花
+  -> 评分和筛选选题
+  -> 生成审核意见、脚本和发布文案
+  -> 登记发布结果
+  -> 复盘并校准下一轮内容判断
 ```
 
-## 核心卖点
+## 业务流程
 
-- 本地优先：用户数据、密钥、火花、对话和产物默认保存在本机，便于本地演示和自托管。
-- 三端闭环：桌面工作台、小程序采集端、本地同步服务可以完整验证从手机灵感到桌面生产的链路。
-- 火花评分：灵感进入火花看板后可盲评、展示维度分，并按分数排序，降低“凭感觉选题”的不确定性。
-- 内容生产链路：支持灵感固化、审核结果、视频脚本、发布文案、静态页文案、发布登记和复盘。
-- 演示友好：内置演示样本流，适合对外推介时讲清楚“灵感 -> 评分 -> 审核 -> 脚本 -> 发布文案”的价值链。
-- 可扩展能力包：话题建议、发布时间建议等运营类技能可作为后续更新包接入，不挤进基础版。
+```mermaid
+flowchart TD
+    A["创作者产生灵感"] --> B["小程序快速采集"]
+    B --> C["本地同步服务接收"]
+    C --> D["桌面工作台拉取灵感"]
+    D --> E["进入火花看板"]
+
+    E --> F["选题评分与筛选"]
+    F --> G{"是否值得继续生产？"}
+
+    G -- "否" --> H["归档 / 暂存 / 后续再看"]
+    G -- "是" --> I["进入内容生产流程"]
+
+    I --> J["生成审稿意见"]
+    J --> K["生成视频脚本"]
+    K --> L["生成发布文案"]
+    L --> M["整理素材与输出文件"]
+
+    M --> N["人工确认与修改"]
+    N --> O["发布到内容平台"]
+    O --> P["登记发布时间、链接和数据"]
+
+    P --> Q["复盘表现"]
+    Q --> R["总结有效选题与表达规律"]
+    R --> F
+
+    classDef idea fill:#fff4cc,stroke:#d99a00,color:#3d2b00,stroke-width:1px;
+    classDef sync fill:#dff7ff,stroke:#118ab2,color:#053047,stroke-width:1px;
+    classDef score fill:#e8f7df,stroke:#4f9d3a,color:#173b17,stroke-width:1px;
+    classDef produce fill:#f1e7ff,stroke:#7b4fd6,color:#271348,stroke-width:1px;
+    classDef publish fill:#ffe5e5,stroke:#d64545,color:#4a1111,stroke-width:1px;
+    classDef review fill:#e9ecff,stroke:#4c63d2,color:#151b4d,stroke-width:1px;
+    classDef decision fill:#ffffff,stroke:#444444,color:#111111,stroke-width:2px;
+
+    class A,B idea;
+    class C,D sync;
+    class E,F,H score;
+    class G decision;
+    class I,J,K,L,M produce;
+    class N,O,P publish;
+    class Q,R review;
+```
 
 ## 项目结构
 
 ```text
 content-workbench/       桌面工作台、本地 API 服务、本地同步服务和测试文档
 mobile-miniapp/          微信小程序灵感采集端
+docs/                    README 截图和项目说明素材
 requirements.txt         Python 依赖清单；当前无第三方依赖
 LICENSE                  开源许可证
 SECURITY.md              安全和敏感信息说明
 ```
 
-## 运行要求
+## 快速开始
+
+运行要求：
 
 - Python 3.10 或更高版本
 - 微信开发者工具（仅小程序端需要）
-- 当前桌面端不依赖第三方 Python 包；`requirements.txt` 仅用于说明和兼容常见安装流程。
+- 当前桌面端不依赖第三方 Python 包
 
-## 桌面工作台启动
-
-可选：先执行依赖安装命令，当前不会安装额外包：
+可选：从仓库根目录执行依赖安装命令，当前不会安装额外包：
 
 ```powershell
 pip install -r requirements.txt
 ```
+
+启动桌面工作台：
 
 ```powershell
 cd content-workbench
@@ -58,7 +145,7 @@ http://127.0.0.1:7870
 content-workbench\run.bat
 ```
 
-## 本地同步服务启动
+## 手机同步验证
 
 需要验证小程序到桌面端同步时，先启动本地云端模拟服务：
 
@@ -112,18 +199,27 @@ node --check mobile-miniapp\pages\index\index.js
 python content-workbench\tools\mosmori_compliance_tests.py
 ```
 
-## 当前边界
+## 当前状态
 
-当前版本适合本地演示、业务流程验证和自托管使用。以下能力仍属于后续生产化范围：
+当前版本适合本地演示、业务流程验证和自托管使用。它可以展示完整内容生产闭环，但还不是成熟 SaaS 产品。
+
+后续生产化范围：
 
 - 正式云端同步服务
 - 正式授权/订阅系统
 - 安装包和自动升级
 - 生产数据库与多用户权限
 - 真实平台 API 发布
+- 更完整的团队协作能力
 
 ## 安全说明
 
 - 不要提交 API Key、授权 token、微信密钥或本地用户数据。
 - 不要提交 `%USERPROFILE%\.content-workbench` 和 `%USERPROFILE%\.content-workbench-cloud`。
 - 微信开发者工具的个人配置请放在 `mobile-miniapp/project.private.config.json`，该文件已被 `.gitignore` 忽略；仓库只保留 `project.private.config.example.json`。
+
+## GitHub Description
+
+```text
+PenMoji 是面向自媒体创作者和内容团队的本地优先内容创作工作台，把手机灵感采集、桌面选题评分、脚本生成、发布文案和复盘记录连成一个可自托管流程。
+```
