@@ -216,7 +216,7 @@ python content-workbench\tools\mosmori_compliance_tests.py
 Created by **请叫我奉孝大人**
 
 - GitHub: [SamuelKwj](https://github.com/SamuelKwj)
-- Douyin: `52168570433`
+- Douyin/抖音: `52168570433`
 - Related project: [PenMoji Content Copilot](https://github.com/SamuelKwj/PenMoji-content-copilot)
 
 ## GitHub Description
