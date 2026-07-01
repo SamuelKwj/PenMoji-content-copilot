@@ -7,3 +7,26 @@ node_modules/
 dist/
 build/
 *.log
+
+# Local runtime data and secrets
+.env
+.env.*
+!.env.example
+*.local
+config.json
+inbox.jsonl
+workflow_runs.jsonl
+session_state.json
+conversations/
+projects/
+hidden-agent-runs/
+
+# WeChat DevTools local/private settings
+mobile-miniapp/project.private.config.json
+mobile-miniapp/private.*
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

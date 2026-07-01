@@ -17,7 +17,7 @@
 ## 启动
 
 ```powershell
-cd C:\Users\samue\Documents\内容生产agent\content-workbench
+cd content-workbench
 python main.py --host 127.0.0.1 --port 7870
 ```
 

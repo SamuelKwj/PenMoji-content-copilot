@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import sys
+import socket
 import urllib.error
 import urllib.request
 import uuid
@@ -84,6 +85,30 @@ DELIVERABLE_LABELS = {
     "promotion_plan": "投流决策",
     "good_article_analysis": "好文分析",
 }
+FULL_FLOW_DELIVERABLES = [
+    "spark_card",
+    "seed_draft",
+    "review",
+    "score",
+    "prediction",
+    "video_script",
+    "text_pack",
+    "static_page",
+]
+MODEL_GENERATED_DELIVERABLES = {
+    "spark_card",
+    "seed_draft",
+    "review",
+    "prediction",
+    "video_script",
+    "text_pack",
+    "static_page",
+    "publish_record",
+    "retro",
+    "overlay_card",
+    "promotion_plan",
+    "good_article_analysis",
+}
 
 
 def mosmori_score_value(item: dict) -> object:
@@ -101,6 +126,15 @@ SPARK_SCORE_RULES = [
     {"key": "AB", "label": "受众广度", "weight": 1.0},
     {"key": "SAT", "label": "反差讽刺", "weight": 1.0},
 ]
+SPARK_SCORE_RULE_EXPLANATIONS = {
+    "HP": "标题或开头能否立刻制造好奇、冲突或反常识。",
+    "ER": "普通观众是否能把这个问题代入自己的处境。",
+    "SR": "是否连接到更大的社会、职业、平台或时代议题。",
+    "QL": "是否有能被记住、转述、截图传播的判断句。",
+    "NA": "是否能展开成具体人物、场景、冲突和变化。",
+    "AB": "受众面是否足够宽，是否只服务很窄的小圈层。",
+    "SAT": "是否存在以为/其实、荒诞感、讽刺感或反差张力。",
+}
 
 
 def now_iso() -> str:
@@ -313,6 +347,22 @@ def update_inbox_item(item_id: str, updates: dict) -> dict | None:
     if updated:
         rewrite_jsonl(INBOX_PATH, items)
     return updated
+
+
+def delete_inbox_item(item_id: str) -> dict | None:
+    if not item_id:
+        return None
+    items = read_jsonl(INBOX_PATH)
+    kept: list[dict] = []
+    deleted = None
+    for item in items:
+        if item.get("id") == item_id:
+            deleted = item
+        else:
+            kept.append(item)
+    if deleted is not None:
+        rewrite_jsonl(INBOX_PATH, kept)
+    return deleted
 
 
 def upsert_inbox_item(item: dict) -> dict:
@@ -582,6 +632,8 @@ def project_path_from_config(config: dict) -> Path:
 
 def route_deliverables(message: str) -> tuple[str, list[str]]:
     text = message.strip()
+    if is_revision_chat_request(text):
+        return "chat", []
     explicit_routes = [
         (r"^(初始化|init|首次使用|我是新用户)", "capability_init", ["init_state"]),
         (r"^(迁移|升级 state|migrate|schema)", "capability_migrate", ["migration_report"]),
@@ -615,7 +667,7 @@ def route_deliverables(message: str) -> tuple[str, list[str]]:
 
     requested_full = any(token in text for token in ["完整", "全套", "做成视频", "成片", "完整流程"])
     if requested_full:
-        return "guided_workflow", ["spark_card"]
+        return "guided_workflow", list(FULL_FLOW_DELIVERABLES)
 
     deliverables: list[str] = []
     if any(token in text for token in ["审核", "审稿", "验证", "值不值得", "值得做", "适合做", "人设匹配", "受众", "风险", "能不能发", "红线"]):
@@ -652,6 +704,31 @@ def route_deliverables(message: str) -> tuple[str, list[str]]:
     return "deliverable_selection", []
 
 
+def is_revision_chat_request(text: str) -> bool:
+    cleaned = text.strip()
+    if not cleaned:
+        return False
+    revision_tokens = [
+        "不喜欢",
+        "不满意",
+        "烂大街",
+        "太普通",
+        "太套路",
+        "太油",
+        "换一批",
+        "重新来",
+        "重来",
+        "再来一批",
+        "再换",
+        "改一下",
+        "换个方向",
+        "不是这个感觉",
+        "不要这种",
+    ]
+    target_tokens = ["标题", "选题", "方向", "候选", "这一批", "这批", "这些", "这种", "这个"]
+    return any(token in cleaned for token in revision_tokens) and any(token in cleaned for token in target_tokens)
+
+
 def build_llm_prompt(message: str, deliverables: list[str], config: dict) -> str:
     creator = config.get("creator", {})
     labels = "、".join(DELIVERABLE_LABELS[key] for key in deliverables) if deliverables else "交付物选择"
@@ -674,6 +751,188 @@ def call_model_provider(prompt: str, config: dict) -> tuple[str, str]:
         {"role": "user", "content": prompt},
     ]
     return call_openai_chat(messages, config, temperature=0.7, timeout=60)
+
+
+def model_provider_ready(config: dict) -> bool:
+    return bool((config.get("api_key") or "").strip() and (config.get("api_base_url") or "").strip())
+
+
+def strip_json_code_fence(text: str) -> str:
+    cleaned = text.strip()
+    match = re.search(r"```(?:json)?\s*(.*?)```", cleaned, flags=re.S | re.I)
+    if match:
+        return match.group(1).strip()
+    return cleaned
+
+
+def parse_model_deliverable_output(raw_text: str, requested: list[str]) -> tuple[dict[str, str], str]:
+    cleaned = strip_json_code_fence(raw_text)
+    if not cleaned:
+        return {}, ""
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        if len(requested) == 1:
+            return {requested[0]: cleaned}, ""
+        return {}, "模型未返回可解析 JSON，多产物生成已回退到本地模板。"
+    if not isinstance(data, dict):
+        return {}, "模型返回结构不是对象，多产物生成已回退到本地模板。"
+    raw_deliverables = data.get("deliverables")
+    if not isinstance(raw_deliverables, dict):
+        raw_deliverables = data
+    parsed: dict[str, str] = {}
+    for key in requested:
+        value = raw_deliverables.get(key)
+        if isinstance(value, str) and value.strip():
+            parsed[key] = value.strip()
+    return parsed, str(data.get("summary") or "").strip()
+
+
+def build_model_deliverable_messages(
+    *,
+    message: str,
+    topic: str,
+    stage: str,
+    deliverables: list[str],
+    config: dict,
+    extra_context: dict | None = None,
+) -> list[dict]:
+    creator = config.get("creator", {})
+    deliverable_schema = {key: DELIVERABLE_LABELS.get(key, key) for key in deliverables}
+    context_text = json.dumps(extra_context or {}, ensure_ascii=False, indent=2)
+    system_prompt = (
+        build_workflow_system_prompt(config)
+        + "\n\n你现在负责生成业务产物文件，而不是解释流程。"
+        "必须由用户输入和当前上下文驱动，不要套用固定模板，不要输出泛泛的通用建议。"
+        "每个产物都要能直接写入对应 markdown 文件。"
+        "如果信息不足，在产物里给出最少必要假设和下一步追问，但仍要围绕本主题给出可用结果。"
+        "评分类产物由隔离评分链路处理；你不要伪造评分。"
+        "发布登记和复盘必须保留程序提供的事实字段，不能改写链接、时间或数据。"
+        "只返回 JSON，不要输出 JSON 之外的解释。"
+    )
+    user_prompt = (
+        "请为下面这次业务动作生成主产物。\n\n"
+        f"stage: {stage}\n"
+        f"topic: {topic}\n"
+        f"用户原始请求: {message}\n"
+        f"创作者配置: 内容形态={creator.get('content_type') or '未配置'}; "
+        f"赛道/人设={creator.get('niche') or '未配置'}; 平台={creator.get('platform') or 'douyin'}\n"
+        f"requested_deliverable_keys: {', '.join(deliverables)}\n"
+        f"requested_deliverables_json: {json.dumps(deliverable_schema, ensure_ascii=False)}\n"
+        f"事实上下文 JSON:\n{context_text}\n\n"
+        "返回格式必须是：\n"
+        "{\n"
+        '  "summary": "一句自然语言总结",\n'
+        '  "deliverables": {\n'
+        '    "video_script": "# 视频脚本\\n...",\n'
+        '    "text_pack": "# 标题与发布文字\\n..."\n'
+        "  }\n"
+        "}\n"
+        "deliverables 里只能包含 requested_deliverable_keys 中的 key。"
+    )
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def generate_model_deliverables(
+    *,
+    message: str,
+    topic: str,
+    stage: str,
+    deliverables: list[str],
+    config: dict,
+    extra_context: dict | None = None,
+) -> dict:
+    requested = [key for key in deliverables if key in MODEL_GENERATED_DELIVERABLES]
+    if not requested:
+        return {
+            "attempted": False,
+            "outputs": {},
+            "raw_text": "",
+            "note": "本次产物不走通用模型生成层。",
+            "summary": "",
+            "model_outputs_used": [],
+        }
+    if not model_provider_ready(config):
+        return {
+            "attempted": False,
+            "outputs": {},
+            "raw_text": "",
+            "note": "未配置模型，使用本地模板兜底。",
+            "summary": "",
+            "model_outputs_used": [],
+        }
+    messages = build_model_deliverable_messages(
+        message=message,
+        topic=topic,
+        stage=stage,
+        deliverables=requested,
+        config=config,
+        extra_context=extra_context,
+    )
+    raw_text, note = call_openai_chat(messages, config, temperature=0.65, timeout=90)
+    outputs, summary = parse_model_deliverable_output(raw_text, requested)
+    return {
+        "attempted": True,
+        "outputs": outputs,
+        "raw_text": raw_text,
+        "note": note if outputs else f"{note}；未取得可用结构化产物，使用本地模板兜底。",
+        "summary": summary,
+        "model_outputs_used": list(outputs.keys()),
+    }
+
+
+def preserve_publish_facts(text: str, topic: str, publish: dict, run: dict | None = None) -> str:
+    metrics = publish.get("initial_metrics") if isinstance(publish.get("initial_metrics"), dict) else {}
+    metric_rows = "\n".join(f"- {key}: {value}" for key, value in metrics.items()) or "- 暂无"
+    prediction_hash = run.get("prediction_hash", "") if run else ""
+    facts = f"""## 发布事实
+
+主题：{topic}
+
+平台：{publish.get("platform") or "未填写"}
+
+发布链接：{publish.get("url") or "未填写"}
+
+发布时间：{publish.get("published_at") or ""}
+
+关联预测 Hash：{prediction_hash or "未找到预测记录"}
+
+初始数据：
+{metric_rows}
+"""
+    required_values = [publish.get("url", ""), publish.get("published_at", "")]
+    if all(not value or value in text for value in required_values):
+        return text
+    return f"{text.rstrip()}\n\n---\n\n{facts.strip()}\n"
+
+
+def preserve_retro_facts(text: str, topic: str, metrics: dict, run: dict | None = None) -> str:
+    views = int(metrics.get("views") or 0)
+    likes = int(metrics.get("likes") or 0)
+    comments = int(metrics.get("comments") or 0)
+    saves = int(metrics.get("saves") or 0)
+    shares = int(metrics.get("shares") or 0)
+    prediction_hash = run.get("prediction_hash", "") if run else ""
+    facts = f"""## 复盘事实
+
+主题：{topic}
+
+关联预测 Hash：{prediction_hash or "未找到预测记录"}
+
+数据：
+- 播放：{views}
+- 点赞：{likes}
+- 评论：{comments}
+- 收藏：{saves}
+- 分享：{shares}
+"""
+    required_values = [f"播放：{views}", f"点赞：{likes}", f"收藏：{saves}"]
+    if all(value in text for value in required_values):
+        return text
+    return f"{text.rstrip()}\n\n---\n\n{facts.strip()}\n"
 
 
 def load_workflow_prompt() -> str:
@@ -810,6 +1069,7 @@ def extract_topic(message: str) -> str:
         r"^(看看|分析|优化|评价)",
         r"^(全套物料|全套|完整流程|完整|做成视频|成片)",
         r"^(发布登记|登记发布|已发布|发出去了|发布了|复盘这个选题|复盘这个灵感|复盘|生成复盘|T\+3复盘|t\+3复盘)",
+        r"^(判断这个选题值不值得做|判断这个选题|验证这个选题|检查这个选题)",
         r"^(固化灵感|固化这个灵感|审核这个灵感|审核这个选题|给这个选题评分|给这个灵感评分|打分这个选题|打分这个灵感|评分这个选题|评分这个灵感)",
         r"^(预测这个选题|预测这个灵感|打分这个选题|打分这个灵感|评分这个选题|评分这个灵感|写视频脚本|生成静态页文案|生成静态页|标题封面句|标题|发布文案)",
         r"^(chat_materialized)",
@@ -823,6 +1083,22 @@ def extract_topic(message: str) -> str:
                 text = updated
                 changed = True
     return text or "未命名灵感"
+
+
+def normalize_title_text(text: str, max_len: int = 48) -> str:
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip(" \t\r\n，,。！？:：")
+    cleaned = re.sub(r"^(选题|标题|主题)[：:]\s*", "", cleaned).strip()
+    pairs = [("「", "」"), ("《", "》"), ("“", "”")]
+    for left, right in pairs:
+        if cleaned.count(left) > cleaned.count(right):
+            cleaned += right
+    if len(cleaned) > max_len:
+        clipped = cleaned[:max_len].rstrip(" ，,。！？:：")
+        for left, right in pairs:
+            if clipped.count(left) > clipped.count(right):
+                clipped = clipped.rsplit(left, 1)[0].rstrip(" ，,。！？:：")
+        cleaned = clipped or cleaned[:max_len].rstrip(" ，,。！？:：")
+    return cleaned or "未命名灵感"
 
 
 def render_spark_card(topic: str, config: dict) -> str:
@@ -1288,17 +1564,18 @@ def unique_strings(items: list[str]) -> list[str]:
 
 
 def title_topic(topic: str, max_len: int = 18) -> str:
-    cleaned = extract_topic(topic)
+    cleaned = normalize_title_text(extract_topic(topic), max_len=48)
     cleaned = re.sub(r"^(测试火花|演示流|火花|灵感)[：:]\s*", "", cleaned)
+    cleaned = re.sub(r"^(我发现|我觉得|我认为)[，,\s]*", "", cleaned).strip()
     cleaned = re.sub(r"^(为什么|怎么|如何)\s*", "", cleaned)
     cleaned = cleaned.replace("为什么", "").replace("总是", "")
     cleaned = re.sub(r"(总是卡住|总卡住|卡住了|为什么)$", "", cleaned)
     cleaned = re.sub(r"[\r\n]+", " ", cleaned).strip()
-    return cleaned[:max_len].strip(" ，。！？:：") or "这个选题"
+    return normalize_title_text(cleaned, max_len=max_len).strip(" ，。！？:：") or "这个选题"
 
 
 def generate_title_candidates(topic: str) -> list[str]:
-    short = title_topic(topic)
+    short = title_topic(topic, max_len=34)
     subject = re.sub(r"(半途而废|总是卖不动货|卖不动货|总是卡住|卡在开始)$", "", short).strip(" ，。！？:：")
     subject = subject or short
     audience_subject = subject if subject.startswith(("普通人", "新手", "很多人")) else f"普通人做{subject}"
@@ -1492,7 +1769,7 @@ def model_score_spark(topic: str, selected_title: str, candidates: list[str], co
             "composite": composite,
             "score_breakdown": dimensions,
             "title_candidates": candidates,
-            "selected_title": str(parsed.get("selected_title") or selected_title).strip() or selected_title,
+            "selected_title": normalize_title_text(parsed.get("selected_title") or selected_title or candidates[0]),
             "scored_at": now_iso(),
             "script_hash": hashlib.sha256(scoring_text.encode("utf-8")).hexdigest()[:12],
             "score_input_policy": "minimal-title-content-score-rules-only",
@@ -1517,7 +1794,7 @@ def branded_score_source_label(source: str) -> str:
 
 def local_score_spark(topic: str, selected_title: str = "", local_note: str = "") -> dict:
     candidates = generate_title_candidates(topic)
-    chosen_title = selected_title.strip() or candidates[0]
+    chosen_title = normalize_title_text(selected_title or candidates[0])
     if chosen_title not in candidates:
         candidates = unique_strings([chosen_title, *candidates])[:4]
     dimensions = score_spark_dimensions(topic, chosen_title)
@@ -1549,7 +1826,7 @@ def local_score_spark(topic: str, selected_title: str = "", local_note: str = ""
 
 def mosmori_score_spark(topic: str, selected_title: str = "", config: dict | None = None, prefer_model: bool = True) -> dict:
     candidates = generate_title_candidates(topic)
-    chosen_title = selected_title.strip() or candidates[0]
+    chosen_title = normalize_title_text(selected_title or candidates[0])
     if chosen_title not in candidates:
         candidates = unique_strings([chosen_title, *candidates])[:4]
     if prefer_model and config:
@@ -1593,6 +1870,193 @@ Composite：{score_data.get("composite", 0)}/10
 """
 
 
+def score_recommendation(score: int) -> str:
+    if score >= 78:
+        return "建议进入脚本生产。"
+    if score >= 62:
+        return "可以做，但先补强钩子、场景或人设依据。"
+    return "暂不建议直接写脚本，先重做选题入口。"
+
+
+def score_dimension_brief(score_data: dict) -> list[dict]:
+    rows = []
+    for item in score_data.get("score_breakdown", []):
+        key = str(item.get("dimension") or "").upper()
+        rows.append(
+            {
+                "key": key,
+                "label": item.get("label", ""),
+                "score": item.get("score", 0),
+                "max": item.get("max", 5),
+                "reason": item.get("reason", ""),
+                "standard": SPARK_SCORE_RULE_EXPLANATIONS.get(key, "按 0-5 分判断该维度是否足够支撑发布。"),
+            }
+        )
+    return rows
+
+
+def score_business_brief(score_data: dict) -> dict:
+    score = int(mosmori_score_value(score_data) or 0)
+    dimensions = score_dimension_brief(score_data)
+    strongest = sorted(dimensions, key=lambda item: int(item.get("score") or 0), reverse=True)[:2]
+    weakest = sorted(dimensions, key=lambda item: int(item.get("score") or 0))[:2]
+    return {
+        "type": "score",
+        "title": "评分判断",
+        "summary": f"综合分 {score}/100，{score_recommendation(score)}",
+        "selected_title": normalize_title_text(score_data.get("selected_title", "")),
+        "score": score,
+        "composite": score_data.get("composite", 0),
+        "recommendation": score_recommendation(score),
+        "why": [item.get("reason", "") for item in strongest if item.get("reason")],
+        "risks": [item.get("reason", "") for item in weakest if item.get("reason")],
+        "dimensions": dimensions,
+        "standards": [
+            {
+                "key": rule["key"],
+                "label": f"{rule['key']} {rule['label']}",
+                "weight": rule["weight"],
+                "standard": SPARK_SCORE_RULE_EXPLANATIONS.get(rule["key"], ""),
+            }
+            for rule in SPARK_SCORE_RULES
+        ],
+    }
+
+
+def first_section_line(markdown: str, label: str) -> str:
+    match = re.search(rf"^{re.escape(label)}[：:]\s*(.+)$", markdown, flags=re.M)
+    return match.group(1).strip() if match else ""
+
+
+def bullet_lines_after(markdown: str, heading: str, limit: int = 3) -> list[str]:
+    match = re.search(rf"^{re.escape(heading)}[：:]?\s*\n(?P<body>.*?)(?:\n\n\S|$)", markdown, flags=re.S | re.M)
+    if not match:
+        return []
+    lines = []
+    for line in match.group("body").splitlines():
+        cleaned = re.sub(r"^\s*[-*]\s*", "", line).strip()
+        if cleaned:
+            lines.append(cleaned)
+        if len(lines) >= limit:
+            break
+    return lines
+
+
+def review_business_brief(topic: str, review_text: str) -> dict:
+    conclusion = first_section_line(review_text, "审核结论") or "可以继续判断，但需要补足具体场景和个人判断。"
+    clarity = bullet_lines_after(review_text, "清晰度", 3)
+    risks = bullet_lines_after(review_text, "平台风险", 3)
+    changes = []
+    for line in review_text.splitlines():
+        cleaned = re.sub(r"^\s*\d+[.、]\s*", "", line).strip()
+        if cleaned and line.strip()[:1].isdigit():
+            changes.append(cleaned)
+        if len(changes) >= 3:
+            break
+    return {
+        "type": "review",
+        "title": "价值判断",
+        "summary": conclusion,
+        "topic": topic,
+        "why": clarity[:2],
+        "risks": risks[:2],
+        "next_changes": changes,
+    }
+
+
+def markdown_preview_points(markdown: str, limit: int = 3) -> list[str]:
+    points: list[str] = []
+    preferred_labels = [
+        "一句话判断",
+        "推荐切入角度",
+        "前 3 秒钩子",
+        "前3秒钩子",
+        "预测结论",
+        "核心判断",
+        "数据范围",
+        "大纲",
+    ]
+    for label in preferred_labels:
+        value = first_section_line(markdown, label)
+        if value:
+            points.append(f"{label}：{value}")
+        if len(points) >= limit:
+            return points[:limit]
+    for line in markdown.splitlines():
+        cleaned = line.strip()
+        if not cleaned or cleaned.startswith("#") or cleaned.startswith("|") or cleaned.startswith("---"):
+            continue
+        cleaned = re.sub(r"^\s*[-*]\s*", "", cleaned)
+        cleaned = re.sub(r"^\s*\d+[.、]\s*", "", cleaned).strip()
+        if not cleaned or cleaned in {"观察：", "大纲：", "建议：", "判断依据："}:
+            continue
+        if len(cleaned) > 90:
+            cleaned = cleaned[:90].rstrip(" ，,。") + "..."
+        if cleaned not in points:
+            points.append(cleaned)
+        if len(points) >= limit:
+            break
+    return points
+
+
+def markdown_inline_result(markdown: str, max_lines: int = 28) -> str:
+    lines: list[str] = []
+    for raw_line in markdown.splitlines():
+        line = raw_line.rstrip()
+        if not line.strip():
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+        if line.lstrip().startswith("# "):
+            continue
+        if line.strip().startswith("主题："):
+            continue
+        lines.append(line)
+        if len([item for item in lines if item.strip()]) >= max_lines:
+            break
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines).strip()
+
+
+def deliverable_preview_brief(deliverable: str, rendered_text: str) -> dict:
+    brief = {
+        "type": "preview",
+        "deliverable": deliverable,
+        "title": DELIVERABLE_LABELS.get(deliverable, deliverable),
+        "points": markdown_preview_points(rendered_text, 4 if deliverable == "prediction" else 3),
+    }
+    if deliverable == "prediction":
+        brief["content"] = markdown_inline_result(rendered_text, max_lines=28)
+    return brief
+
+
+def deliverable_business_briefs(topic: str, deliverables: list[str], rendered: dict[str, str], score_data: dict | None = None) -> list[dict]:
+    briefs: list[dict] = []
+    if "review" in deliverables and rendered.get("review"):
+        briefs.append(review_business_brief(topic, rendered["review"]))
+    if "score" in deliverables and score_data:
+        briefs.append(score_business_brief(score_data))
+    for key in ["seed_draft", "prediction", "video_script", "text_pack", "static_page", "overlay_card"]:
+        if key in deliverables and rendered.get(key):
+            preview = deliverable_preview_brief(key, rendered[key])
+            if preview.get("points"):
+                briefs.append(preview)
+    return briefs
+
+
+def business_summary_from_briefs(default_summary: str, briefs: list[dict]) -> str:
+    if not briefs:
+        return default_summary
+    score_brief = next((item for item in briefs if item.get("type") == "score"), None)
+    review_brief = next((item for item in briefs if item.get("type") == "review"), None)
+    if score_brief:
+        return str(score_brief.get("summary") or default_summary)
+    if review_brief:
+        return str(review_brief.get("summary") or default_summary)
+    return default_summary
+
+
 
 def score_from_hidden_agent_run(topic: str, selected_title: str, hidden_run: dict) -> dict | None:
     llm_call = hidden_run.get("llm_call") if isinstance(hidden_run.get("llm_call"), dict) else {}
@@ -1605,7 +2069,7 @@ def score_from_hidden_agent_run(topic: str, selected_title: str, hidden_run: dic
     except (ValueError, TypeError, json.JSONDecodeError):
         return None
     candidates = generate_title_candidates(topic)
-    chosen_title = str(parsed.get("selected_title") or selected_title or candidates[0]).strip()
+    chosen_title = normalize_title_text(parsed.get("selected_title") or selected_title or candidates[0])
     if chosen_title not in candidates:
         candidates = unique_strings([chosen_title, *candidates])[:4]
     composite, mosmori_score = composite_score(dimensions)
@@ -1665,10 +2129,9 @@ def isolated_blind_score(topic: str, config: dict, selected_title: str = "") -> 
     return score_data
 
 
-def score_spark_item(item: dict, selected_title: str, config: dict, demo: bool = False) -> tuple[dict, list[dict]]:
+def score_spark_item(item: dict, selected_title: str, config: dict, demo: bool = False, persist_artifact: bool = True) -> tuple[dict, list[dict]]:
     topic = item.get("content") or item.get("media_url") or "未命名灵感"
     score_data = isolated_blind_score(topic, config, selected_title) if not demo else local_score_spark(topic, selected_title, "演示模式使用 Mosmori 本地评分。")
-    rendered = {"score": render_spark_score(topic, score_data)}
     flow_id = item.get("flow_id") or hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
     source = {
         "inbox_id": item.get("id", ""),
@@ -1678,15 +2141,18 @@ def score_spark_item(item: dict, selected_title: str, config: dict, demo: bool =
     }
     if demo:
         source["demo"] = True
-    artifacts = write_deliverable_artifacts(
-        f"给这个选题评分：{topic}",
-        "score",
-        ["score"],
-        rendered,
-        "",
-        config,
-        source=source,
-    )
+    artifacts = []
+    if persist_artifact:
+        rendered = {"score": render_spark_score(topic, score_data)}
+        artifacts = write_deliverable_artifacts(
+            f"给这个选题评分：{topic}",
+            "score",
+            ["score"],
+            rendered,
+            "",
+            config,
+            source=source,
+        )
     existing_paths = item.get("artifact_paths") if isinstance(item.get("artifact_paths"), list) else []
     score_data["artifact_paths"] = [*existing_paths, *[entry["path"] for entry in artifacts]]
     score_data["flow_topic"] = topic
@@ -2284,14 +2750,14 @@ def extract_workflow_topic_from_message(text: str) -> str:
     cleaned = re.sub(r"^(发布登记|登记发布|已发布|发出去了|发布了|复盘这个选题|复盘这个灵感|复盘|生成复盘|T\+3复盘|t\+3复盘)[：:\s]*", "", text.strip(), flags=re.I)
     topic_match = re.search(r"(?:选题|主题|标题)[：:]\s*([^，,。；;\n]+)", cleaned)
     if topic_match:
-        return topic_match.group(1).strip()
+        return normalize_title_text(topic_match.group(1).strip(), max_len=80)
     metric_pos = len(cleaned)
     for token in ["平台", "链接", "发布时间", "播放", "点赞", "评论", "收藏", "分享"]:
         idx = cleaned.find(token)
         if idx >= 0:
             metric_pos = min(metric_pos, idx)
     candidate = cleaned[:metric_pos].strip(" ，,。；;：:")
-    return candidate or extract_topic(text)
+    return normalize_title_text(candidate or extract_topic(text), max_len=80)
 
 
 def parse_publish_message(text: str) -> dict:
@@ -2349,6 +2815,7 @@ def workflow_action_reply(stage: str, summary: str, worklog: list[str], payload_
         "result": {
             "run": payload_result.get("run", {}),
             "artifacts": artifacts,
+            "generation_meta": payload_result.get("generation_meta", {}),
             "next_step": next_step,
         },
     }
@@ -2385,12 +2852,24 @@ def register_publish(payload: dict, config: dict) -> dict:
     if run.get("demo"):
         source["demo"] = True
     rendered = {"publish_record": render_publish_record(topic, publish, run)}
+    generation_meta = generate_model_deliverables(
+        message=f"登记发布：{topic}",
+        topic=topic,
+        stage="publish_registration",
+        deliverables=["publish_record"],
+        config=config,
+        extra_context={"publish": publish, "workflow_run": run},
+    )
+    llm_text = ""
+    if generation_meta.get("outputs", {}).get("publish_record"):
+        rendered["publish_record"] = preserve_publish_facts(generation_meta["outputs"]["publish_record"], topic, publish, run)
+        llm_text = generation_meta.get("raw_text", "")
     artifacts = write_deliverable_artifacts(
         f"登记发布：{topic}",
         "publish_registration",
         ["publish_record"],
         rendered,
-        "",
+        llm_text,
         config,
         source=source,
     )
@@ -2403,7 +2882,7 @@ def register_publish(payload: dict, config: dict) -> dict:
             "artifact_paths": [*run.get("artifact_paths", []), *artifact_paths(artifacts)],
         },
     ) or run
-    return {"run": updated, "artifacts": artifacts}
+    return {"run": updated, "artifacts": artifacts, "generation_meta": generation_meta}
 
 
 def generate_retro(payload: dict, config: dict) -> dict:
@@ -2422,12 +2901,24 @@ def generate_retro(payload: dict, config: dict) -> dict:
     if run and run.get("demo"):
         source["demo"] = True
     rendered = {"retro": render_retro(topic, metrics, run, notes)}
+    generation_meta = generate_model_deliverables(
+        message=f"生成复盘：{topic}",
+        topic=topic,
+        stage="retro",
+        deliverables=["retro"],
+        config=config,
+        extra_context={"metrics": metrics, "notes": notes, "workflow_run": run or {}},
+    )
+    llm_text = ""
+    if generation_meta.get("outputs", {}).get("retro"):
+        rendered["retro"] = preserve_retro_facts(generation_meta["outputs"]["retro"], topic, metrics, run)
+        llm_text = generation_meta.get("raw_text", "")
     artifacts = write_deliverable_artifacts(
         f"生成复盘：{topic}",
         "retro",
         ["retro"],
         rendered,
-        "",
+        llm_text,
         config,
         source=source,
     )
@@ -2455,10 +2946,10 @@ def generate_retro(payload: dict, config: dict) -> dict:
             "artifact_paths": artifact_paths(artifacts),
         }
         append_jsonl(WORKFLOW_RUNS_PATH, updated)
-    return {"run": updated, "artifacts": artifacts}
+    return {"run": updated, "artifacts": artifacts, "generation_meta": generation_meta}
 
 
-def next_step_for(deliverables: list[str], topic: str) -> dict:
+def next_step_for(deliverables: list[str], topic: str, score_data: dict | None = None) -> dict:
     present = set(deliverables)
     if "static_page" in present:
         return {"label": "完成", "prompt": "这个选题的文字流程已完成，可以人工修改脚本后进入拍摄。"}
@@ -2471,6 +2962,11 @@ def next_step_for(deliverables: list[str], topic: str) -> dict:
     if "prediction" in present:
         return {"label": "抖音审稿", "prompt": f"抖音审稿：{topic}"}
     if "score" in present:
+        score = int(mosmori_score_value(score_data or {}) or 0)
+        if score and score < 62:
+            return {"label": "优化入口", "prompt": f"基于这个评分，帮我优化选题入口：{topic}"}
+        if score and score < 78:
+            return {"label": "补强选题", "prompt": f"基于这个评分，帮我补强钩子、场景和金句：{topic}"}
         return {"label": "预测", "prompt": f"预测这个选题：{topic}"}
     if "review" in present:
         return {"label": "评分", "prompt": f"给这个选题评分：{topic}"}
@@ -2553,6 +3049,77 @@ def looks_like_profile_update(text: str) -> bool:
     return bool(re.search(r"我是做|我做|平台|赛道|人设|定位", text) and detect_profile_updates(text))
 
 
+def recent_topic_from_context(conversation_history: list[dict] | None, state: dict | None = None) -> str:
+    pending = (state or {}).get("pending_spark", {}) if isinstance((state or {}).get("pending_spark"), dict) else {}
+    if pending.get("content"):
+        return normalize_title_text(pending.get("content"))
+    history = conversation_history or []
+    combined_assistant = "\n".join(
+        str(item.get("content") or "") for item in history if item.get("role") == "assistant"
+    )
+    selected_match = re.findall(r"(?:按第\s*[1-4]\s*个方向收录|选用标题|主题)[：:]\s*([^\n]+)", combined_assistant)
+    if selected_match:
+        return normalize_title_text(selected_match[-1], max_len=80)
+    titles = re.findall(r"《([^》]{2,80})》", combined_assistant)
+    if titles:
+        return normalize_title_text(titles[-1])
+    for item in reversed(history):
+        if item.get("role") == "assistant":
+            continue
+        candidate = str(item.get("content") or "").strip()
+        if not candidate or is_empty_action_request(candidate):
+            continue
+        if re.fullmatch(r"[A-Da-d1-4]|继续|不需要|需要|可以|确认|收录|确认收录", candidate):
+            continue
+        cleaned = extract_topic(candidate)
+        if len(cleaned) >= 4 and cleaned not in {"你好", "您好", "hello", "hi"}:
+            return normalize_title_text(cleaned)
+    return ""
+
+
+def fill_empty_action_with_context(text: str, conversation_history: list[dict] | None, state: dict | None = None) -> str:
+    if not is_empty_action_request(text):
+        return text
+    topic = recent_topic_from_context(conversation_history, state)
+    if not topic:
+        return text
+    if re.search(r"审核|审稿|判断|验证|检查", text):
+        return f"判断这个选题值不值得做：{topic}"
+    if re.search(r"脚本|口播", text):
+        return f"写视频脚本：{topic}"
+    if re.search(r"评分|打分", text):
+        return f"给这个选题评分：{topic}"
+    if re.search(r"预测|预判", text):
+        return f"预测这个选题：{topic}"
+    return text
+
+
+def option_index_from_text(text: str) -> int | None:
+    cleaned = text.strip().upper()
+    mapping = {"1": 0, "2": 1, "3": 2, "4": 3, "A": 0, "B": 1, "C": 2, "D": 3}
+    return mapping.get(cleaned) if re.fullmatch(r"[1-4A-D]", cleaned) else None
+
+
+def recent_numbered_options(conversation_history: list[dict] | None) -> list[str]:
+    for item in reversed(conversation_history or []):
+        if item.get("role") != "assistant":
+            continue
+        content = str(item.get("content") or "")
+        options: list[str] = []
+        for line in content.splitlines():
+            match = re.match(r"^\s*(?:[-*]\s*)?([1-4A-Da-d])[\.、)]\s*(.+?)\s*$", line)
+            if not match:
+                continue
+            value = match.group(2).strip()
+            value = re.sub(r"^[《「“\"']+", "", value)
+            value = re.sub(r"[》」”\"']+$", "", value)
+            if len(value) >= 4:
+                options.append(normalize_title_text(value, max_len=80))
+        if len(options) >= 2:
+            return options[:4]
+    return []
+
+
 def make_session_reply(stage: str, summary: str, worklog: list[str], result: dict) -> dict:
     return {
         "id": str(uuid.uuid4()),
@@ -2564,6 +3131,72 @@ def make_session_reply(stage: str, summary: str, worklog: list[str], result: dic
         "actions": [],
         "result": {"artifacts": [], **result},
     }
+
+
+def handle_numbered_option_selection(
+    text: str,
+    conversation_history: list[dict] | None,
+    state: dict,
+    config: dict,
+    worklog: list[str],
+) -> dict | None:
+    index = option_index_from_text(text)
+    if index is None:
+        return None
+    options = recent_numbered_options(conversation_history)
+    if not options:
+        return None
+    if index >= len(options):
+        return make_session_reply(
+            "chat",
+            "我没在上一轮里找到对应编号。你可以直接复制你想选的那条，或者让我重新给一批方向。",
+            worklog + ["识别为编号选择，但上一轮候选不足，未触发产物生成。"],
+            {"suggested_actions": [{"label": "重给一批", "prompt": "这批不对，重新给一批方向。"}]},
+        )
+    selected = options[index]
+    score_item = normalize_inspiration(
+        {
+            "type": "text",
+            "content": selected,
+            "sync_status": "pulled",
+            "capture_intent": "collect",
+            "title_candidates": options,
+            "selected_title": selected,
+        }
+    )
+    score_updates, artifacts = score_spark_item(score_item, selected, config, persist_artifact=False)
+    score_item.update(score_updates)
+    archive_path = mirror_to_project_archive(score_item, config)
+    if archive_path:
+        score_item["local_path"] = archive_path
+    spark_item = upsert_inbox_item(score_item)
+    state["pending_spark"] = {}
+    state["collecting_spark"] = False
+    save_session_state(state)
+    score = int(mosmori_score_value(score_item) or 0)
+    summary = (
+        f"已按第 {index + 1} 个方向收录：{selected}\n\n"
+        f"我已经做了隔离盲打分，当前火花分是 {score}/100。它会进入左侧火花清单参与排序；"
+        "这一步不生成右侧产物。接下来更适合先深挖真实场景和观点，再决定要不要写稿。"
+    )
+    return make_session_reply(
+        "spark_collected",
+        summary,
+        worklog + ["识别为上一轮候选编号选择，已执行盲打分并写入火花清单。"],
+        {
+            "selected_option": {"index": index + 1, "content": selected},
+            "spark_item": spark_item,
+            "topic": selected,
+            "deliverables": [],
+            "artifacts": [],
+            "next_step": {"label": "深挖成稿", "prompt": f"帮我挖一下这个：{selected}"},
+            "suggested_actions": [
+                {"label": "深挖成稿", "prompt": f"帮我挖一下这个：{selected}"},
+                {"label": "选题验证", "prompt": f"判断这个选题值不值得做：{selected}"},
+                {"label": "再换一批", "prompt": "这批还是不对，再换一批。"},
+            ],
+        },
+    )
 
 
 def title_options_for_spark(content: str) -> list[str]:
@@ -2652,7 +3285,7 @@ def infer_chat_workflow_topic(message: str, assistant_text: str, conversation_hi
     combined = "\n".join(combined_parts)
     titles = re.findall(r"《([^》]{2,80})》", combined)
     if titles:
-        return titles[-1].strip()
+            return normalize_title_text(titles[-1].strip(), max_len=80)
     user_candidates = [
         str(item.get("content", "")).strip()
         for item in conversation_history
@@ -2664,8 +3297,8 @@ def infer_chat_workflow_topic(message: str, assistant_text: str, conversation_hi
             continue
         cleaned = re.sub(r"^(记录|收录|固化|保存)(这个)?(灵感|火花|想法)?[，,：:\s]*", "", candidate).strip()
         if len(cleaned) >= 4:
-            return cleaned[:80]
-    return extract_topic(message)
+            return normalize_title_text(cleaned, max_len=80)
+    return normalize_title_text(extract_topic(message), max_len=80)
 
 
 def infer_chat_workflow_artifacts(message: str, assistant_text: str, conversation_history: list[dict]) -> dict:
@@ -2696,7 +3329,7 @@ def materialized_sections_from_conversation(conversation: dict) -> tuple[str, di
     messages = conversation.get("messages", []) if isinstance(conversation, dict) else []
     history = [{"role": item.get("role", "user"), "content": item.get("content", "")} for item in messages]
     combined = "\n\n".join(str(item.get("content") or "") for item in messages if item.get("content"))
-    topic = infer_chat_workflow_topic(str(conversation.get("title") or ""), combined, history)
+    topic = normalize_title_text(infer_chat_workflow_topic(str(conversation.get("title") or ""), combined, history), max_len=80)
     sections: dict[str, str] = {}
     for item in messages:
         if item.get("role") != "assistant":
@@ -2745,7 +3378,8 @@ def materialize_conversation_artifacts(conversation: dict, config: dict) -> dict
 
 
 def local_agent_reply(message: str, config: dict, source: dict | None = None, conversation_history: list[dict] | None = None) -> dict:
-    text = message.strip()
+    state = load_session_state()
+    text = fill_empty_action_with_context(message.strip(), conversation_history, state)
     chat_materialized_output = ""
     initial_stage, initial_deliverables = route_deliverables(text)
     worklog = [
@@ -2759,13 +3393,18 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
         return session_reply
 
     state = load_session_state()
+    option_reply = handle_numbered_option_selection(text, conversation_history, state, config, worklog)
+    if option_reply:
+        return option_reply
+
+    state = load_session_state()
     pending_spark = state.get("pending_spark", {}) if isinstance(state.get("pending_spark"), dict) else {}
     confirmed_pending = is_confirm_collect(text) and bool(pending_spark.get("content"))
     if confirmed_pending:
         text = f"固化这个灵感：{pending_spark['content']}"
 
     stage, deliverables = route_deliverables(text)
-    topic = extract_topic(text)
+    topic = normalize_title_text(extract_topic(text), max_len=80)
 
     if stage == "publish_registration":
         payload = parse_publish_message(text)
@@ -2829,13 +3468,42 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
                 },
             }
 
+    rendered = render_deliverables(topic, deliverables, config)
     llm_text = "" if not chat_materialized_output else chat_materialized_output
     llm_note = "未请求 LLM。"
-    if deliverables and not chat_materialized_output:
-        llm_text, llm_note = call_model_provider(build_llm_prompt(text, deliverables, config), config)
+    generation_meta = {
+        "attempted": False,
+        "note": llm_note,
+        "model_outputs_used": [],
+        "summary": "",
+    }
+    if chat_materialized_output and len(deliverables) == 1:
+        rendered[deliverables[0]] = chat_materialized_output
+        generation_meta = {
+            "attempted": True,
+            "note": "聊天模型输出已识别为业务产物，并写入主产物文件。",
+            "model_outputs_used": list(deliverables),
+            "summary": "",
+        }
+    elif deliverables:
+        model_generation = generate_model_deliverables(
+            message=text,
+            topic=topic,
+            stage=stage,
+            deliverables=deliverables,
+            config=config,
+        )
+        if model_generation.get("outputs"):
+            rendered.update(model_generation["outputs"])
+            llm_text = model_generation.get("raw_text", "")
+        llm_note = model_generation.get("note", llm_note)
+        generation_meta = {
+            "attempted": bool(model_generation.get("attempted")),
+            "note": llm_note,
+            "model_outputs_used": model_generation.get("model_outputs_used", []),
+            "summary": model_generation.get("summary", ""),
+        }
         worklog.append(llm_note)
-
-    rendered = render_deliverables(topic, deliverables, config)
     skill_meta = execute_skill_deliverables(topic, rendered, deliverables, config)
     source_for_artifacts = dict(source or {})
     if confirmed_pending:
@@ -2844,6 +3512,7 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
     elif stage == "chat_materialized":
         source_for_artifacts["flow_topic"] = topic
         source_for_artifacts["flow_id"] = hashlib.sha256(topic.encode("utf-8")).hexdigest()[:12]
+    score_data = None
     if "score" in deliverables:
         score_data = isolated_blind_score(topic, config)
         source_for_artifacts["score_skill_route"] = score_data.get("skill_route", {})
@@ -2865,24 +3534,28 @@ def local_agent_reply(message: str, config: dict, source: dict | None = None, co
         run = lock_prediction_run(topic, rendered["prediction"], artifacts, source)
         worklog.append(f"已锁定发布预测记录：{run['id']}。")
 
-    next_step = next_step_for(deliverables, topic)
+    next_step = next_step_for(deliverables, topic, score_data)
 
     if stage == "guided_workflow":
-        summary = "已把这个火花放进选题档案。下一步可以做盲打分或先写口播稿。"
+        summary = generation_meta.get("summary") or "已自动推进完整内容链路，火花、深化、审核、评分、预测和发布前物料都已落盘。"
     elif deliverables:
         labels = "、".join(DELIVERABLE_LABELS[key] for key in deliverables)
-        summary = f"{labels}已生成，文件已经更新到这个选题的固定目录。"
+        summary = generation_meta.get("summary") or f"{labels}已生成，文件已经更新到这个选题的固定目录。"
     else:
         summary = "你可以直接丢一个观察、经历或一句判断，我会先帮你整理成候选火花。"
+    business_briefs = deliverable_business_briefs(topic, deliverables, rendered, score_data)
+    summary = business_summary_from_briefs(summary, business_briefs)
 
     if deliverables:
         result = {
             "topic": topic,
             "deliverables": [{"type": key, "label": DELIVERABLE_LABELS[key]} for key in deliverables],
-            "llm_used": bool(llm_text),
+            "llm_used": bool(llm_text or generation_meta.get("model_outputs_used")),
             "llm_note": llm_note,
+            "generation_meta": generation_meta,
             "artifacts": artifacts,
             "preview": {key: value.splitlines()[:8] for key, value in rendered.items()},
+            "business_briefs": business_briefs,
             "next_step": next_step,
         }
         if skill_meta:
@@ -3008,6 +3681,13 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             conversation_id = unquote(path.removeprefix("/api/conversations/"))
             deleted = delete_conversation(conversation_id)
             self.send_json({"status": "ok", "deleted": deleted})
+        elif path.startswith("/api/inbox/"):
+            item_id = unquote(path.removeprefix("/api/inbox/"))
+            deleted = delete_inbox_item(item_id)
+            if deleted is None:
+                self.send_json({"error": "inbox item not found"}, HTTPStatus.NOT_FOUND)
+                return
+            self.send_json({"status": "ok", "deleted": True, "item": deleted})
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -3292,13 +3972,27 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         print(f"[{timestamp}] {self.address_string()} {fmt % args}")
 
 
+class StrictThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+    allow_reuse_port = False
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Content Workbench local server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7870)
     args = parser.parse_args()
     ensure_data_dirs()
-    server = ThreadingHTTPServer((args.host, args.port), WorkbenchHandler)
+    try:
+        server = StrictThreadingHTTPServer((args.host, args.port), WorkbenchHandler)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 10048 or getattr(exc, "errno", None) in {48, 98, 10048}:
+            print(
+                f"Port {args.port} is already in use on {args.host}. "
+                "Close the existing PenMoji/Content Workbench process or start with --port <free-port>."
+            )
+            raise SystemExit(2) from exc
+        raise
     print(f"Content Workbench {APP_VERSION} running at http://{args.host}:{args.port}")
     try:
         server.serve_forever()

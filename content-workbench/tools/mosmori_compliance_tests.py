@@ -154,6 +154,12 @@ def run() -> dict:
             results.append(expect("spark_card" not in json.dumps(casual_reply, ensure_ascii=False), f"chat:no-spark-card:{casual_message}", json.dumps(casual_reply, ensure_ascii=False)[:500]))
         results.append(expect(not wb.read_jsonl(wb.INBOX_PATH), "chat:repeated-casual-no-inbox-write", str(wb.read_jsonl(wb.INBOX_PATH))))
 
+        delete_test_item = wb.upsert_inbox_item({"type": "text", "content": "待删除火花", "sync_status": "pulled"})
+        deleted_item = wb.delete_inbox_item(delete_test_item.get("id", ""))
+        remaining_inbox = wb.read_jsonl(wb.INBOX_PATH)
+        results.append(expect(deleted_item and deleted_item.get("content") == "待删除火花", "inbox-delete:returns-deleted-item", str(deleted_item)))
+        results.append(expect(not any(item.get("id") == delete_test_item.get("id") for item in remaining_inbox), "inbox-delete:removes-only-inbox-item", str(remaining_inbox)))
+
         material_chat_reply = wb.local_agent_reply("你是谁？\n\n火花：普通人为什么做个人IP总是半途而废", config)
         results.append(expect(material_chat_reply.get("stage") == "chat", "chat:material-label-does-not-force-spark", str(material_chat_reply)))
         results.append(expect(not material_chat_reply.get("result", {}).get("artifacts"), "chat:material-label-no-artifacts", str(material_chat_reply)))
@@ -169,6 +175,50 @@ def run() -> dict:
         results.append(expect(short_label_reply.get("stage") != "spark_candidate", "intent:short-label-not-spark-candidate", str(short_label_reply)))
         results.append(expect(not short_label_reply.get("result", {}).get("artifacts"), "intent:short-label-no-artifacts", str(short_label_reply)))
 
+        revision_history = [
+            {"role": "user", "content": "就我觉得很多人使用ai都是不动脑筋"},
+            {
+                "role": "assistant",
+                "content": "标题方向：1. 《用AI越久越笨：90%的人根本不会用AI，只是在给脑子放假》",
+            },
+        ]
+        original_call_chat_provider = wb.call_chat_provider
+        wb.call_chat_provider = lambda message, cfg, conversation_history=None: (
+            "我明白，这批太像流量模板了。我们换成更克制、更有判断感的一批标题。",
+            "测试模型返回",
+        )
+        revision_reply = wb.local_agent_reply("我不喜欢这种烂大街的标题，换一批。", config, conversation_history=revision_history)
+        wb.call_chat_provider = original_call_chat_provider
+        results.append(expect(revision_reply.get("stage") == "chat", "chat:title-revision-stays-chat", str(revision_reply)))
+        results.append(expect(not revision_reply.get("result", {}).get("artifacts"), "chat:title-revision-no-artifacts", str(revision_reply)))
+        results.append(expect("text_pack" not in json.dumps(revision_reply, ensure_ascii=False), "chat:title-revision-no-text-pack", json.dumps(revision_reply, ensure_ascii=False)[:800]))
+        option_history = [
+            {"role": "user", "content": "就我觉得很多人使用ai都是不动脑筋"},
+            {
+                "role": "assistant",
+                "content": "\n".join(
+                    [
+                        "这次试试这四个：",
+                        "1. 《我观察：大部分人用AI，只是把“自己该想的事”直接扔给AI了》",
+                        "2. 用AI帮我写稿→AI帮我想选题→我没什么想法了｜这是不是你？",
+                        "3. 我现在用AI的原则：只让它帮我干活，绝不让它帮我想问题",
+                        "4. 别骂AI卷了，大部分人本来就懒得动脑筋",
+                    ]
+                ),
+            },
+        ]
+        selected_reply = wb.local_agent_reply("4", config, conversation_history=option_history)
+        selected = selected_reply.get("result", {}).get("selected_option", {})
+        selected_spark = selected_reply.get("result", {}).get("spark_item", {})
+        results.append(expect(selected_reply.get("stage") == "spark_collected", "spark:numbered-title-choice-collects-after-blind-score", str(selected_reply)))
+        results.append(expect(not selected_reply.get("result", {}).get("artifacts"), "spark:numbered-title-choice-no-output-artifact", str(selected_reply)))
+        results.append(expect("已保存" not in selected_reply.get("summary", "") and "完整维度" not in selected_reply.get("summary", ""), "spark:numbered-title-choice-no-report-style-summary", selected_reply.get("summary", "")))
+        results.append(expect(selected.get("index") == 4 and "别骂AI卷了" in selected.get("content", ""), "chat:numbered-title-choice-selects-fourth", str(selected_reply)))
+        results.append(expect(selected_spark.get("content") == selected.get("content") and wb.mosmori_score_value(selected_spark), "spark:numbered-title-choice-enters-inbox-with-score", str(selected_spark)))
+        followup_review = wb.local_agent_reply("判断这个选题值不值得做：", config, conversation_history=option_history + [{"role": "user", "content": "4"}, {"role": "assistant", "content": selected_reply.get("summary", "")}])
+        results.append(expect(followup_review.get("stage") == "on_demand_production" and "review" in deliverable_types(followup_review), "chat:numbered-title-choice-followup-produces-review", json.dumps(followup_review, ensure_ascii=False)[:800]))
+        results.append(expect("别骂AI卷了" in followup_review.get("result", {}).get("topic", "") and "我观察" not in followup_review.get("result", {}).get("topic", ""), "chat:numbered-title-choice-followup-uses-selected-topic", followup_review.get("result", {}).get("topic", "")))
+
         profile_reply = wb.local_agent_reply("我是做个人IP口播，平台抖音，赛道是商业诊断。请先记住这个定位。", config)
         results.append(expect(profile_reply.get("stage") == "profile_update", "session:profile-update-stage", str(profile_reply)))
         session_state = wb.load_session_state()
@@ -183,15 +233,27 @@ def run() -> dict:
         for token in ["口播", "抖音", "个人IP", "商业诊断"]:
             results.append(expect(token in system_prompt_after_profile, f"prompt:profile-persists:{token}", system_prompt_after_profile[-500:]))
 
+        inbox_before_empty_guides = len(wb.read_jsonl(wb.INBOX_PATH))
         empty_collect = wb.local_agent_reply("收录这个灵感：", config)
         results.append(expect(empty_collect.get("stage") == "collect_guidance", "session:empty-collect-guidance", str(empty_collect)))
         results.append(expect(not empty_collect.get("result", {}).get("artifacts"), "session:empty-collect-no-artifacts", str(empty_collect)))
-        results.append(expect(not wb.read_jsonl(wb.INBOX_PATH), "session:empty-collect-no-inbox-write", str(wb.read_jsonl(wb.INBOX_PATH))))
+        results.append(expect(len(wb.read_jsonl(wb.INBOX_PATH)) == inbox_before_empty_guides, "session:empty-collect-no-inbox-write", str(wb.read_jsonl(wb.INBOX_PATH))))
         for empty_guide in ["审核这个灵感：", "写视频脚本：", "判断这个选题值不值得做："]:
             guide_reply = wb.local_agent_reply(empty_guide, config)
             results.append(expect(guide_reply.get("stage") in {"collect_guidance", "chat"}, f"guide:empty-template-no-production-stage:{empty_guide}", str(guide_reply)))
             results.append(expect(not guide_reply.get("result", {}).get("artifacts"), f"guide:empty-template-no-artifacts:{empty_guide}", str(guide_reply)))
-        results.append(expect(not wb.read_jsonl(wb.INBOX_PATH), "guide:empty-template-no-inbox-write", str(wb.read_jsonl(wb.INBOX_PATH))))
+        results.append(expect(len(wb.read_jsonl(wb.INBOX_PATH)) == inbox_before_empty_guides, "guide:empty-template-no-inbox-write", str(wb.read_jsonl(wb.INBOX_PATH))))
+
+        contextual_history = [
+            {"role": "user", "content": "人不可以没有感受"},
+            {"role": "assistant", "content": "标题方向：1. 《我发现，大部分人的内耗都来自「不敢有感受」》"},
+        ]
+        contextual_review = wb.local_agent_reply("判断这个选题值不值得做：", config, conversation_history=contextual_history)
+        results.append(expect(contextual_review.get("stage") == "on_demand_production" and "review" in deliverable_types(contextual_review), "guide:empty-template-uses-context-topic", json.dumps(contextual_review, ensure_ascii=False)[:800]))
+        results.append(expect(contextual_review.get("result", {}).get("topic") == "我发现，大部分人的内耗都来自「不敢有感受」", "guide:context-topic-normalized", contextual_review.get("result", {}).get("topic", "")))
+        low_score_next = wb.next_step_for(["score"], "我发现，大部分人的内耗都来自「不敢有感受」", {"mosmori_score": 42})
+        results.append(expect(low_score_next.get("label") == "优化入口" and "预测" not in low_score_next.get("label", ""), "score:low-score-next-step-optimizes-first", str(low_score_next)))
+        results.append(expect(wb.normalize_title_text("我发现，大部分人的内耗都来自「不敢有感受") == "我发现，大部分人的内耗都来自「不敢有感受」", "title:normalizes-dangling-quote", wb.normalize_title_text("我发现，大部分人的内耗都来自「不敢有感受")))
 
         chat_history = [
             {"role": "user", "content": "记录灵感，人类在自寻死路"},
@@ -266,6 +328,52 @@ def run() -> dict:
         model_status = wb.test_model_provider({"api_key": "", "api_base_url": "", "model": "bad-model"})
         results.append(expect(model_status.get("status") == "failed" and model_status.get("tested_at"), "llm-test:status-shape", str(model_status)))
 
+        original_call_openai_chat = wb.call_openai_chat
+
+        def fake_model_deliverables(messages, cfg, temperature=0.7, timeout=60):
+            user_text = "\n".join(str(item.get("content", "")) for item in messages if item.get("role") == "user")
+            requested = [key for key in wb.DELIVERABLE_LABELS if key in user_text]
+            if not requested:
+                requested = ["video_script"]
+            payload = {
+                "summary": "模型已经根据用户输入自动判断并推进工作流。",
+                "deliverables": {
+                    key: f"# {wb.DELIVERABLE_LABELS.get(key, key)}\n\n模型驱动产物-{key}-入口判断。\n\n主题来自用户输入，不使用固定模板。"
+                    for key in requested
+                },
+            }
+            return json.dumps(payload, ensure_ascii=False), "测试模型返回结构化产物。"
+
+        model_config = {**config, "api_key": "test-key", "api_base_url": "http://model.test/v1", "model": "test-model"}
+        wb.call_openai_chat = fake_model_deliverables
+        try:
+            model_script_reply = wb.local_agent_reply("写视频脚本：普通人做内容前如何判断入口", model_config)
+            script_paths = [Path(item.get("path", "")) for item in model_script_reply.get("result", {}).get("artifacts", []) if item.get("type") == "video_script"]
+            script_text = script_paths[0].read_text(encoding="utf-8") if script_paths else ""
+            results.append(expect("模型驱动产物-video_script-入口判断" in script_text, "model-driven:script-file-uses-model-output", script_text[:800]))
+            results.append(expect("今天想讲一个很多人做个人 IP 时都会踩的坑" not in script_text, "model-driven:script-file-not-fixed-template", script_text[:800]))
+            generation_meta = model_script_reply.get("result", {}).get("generation_meta", {})
+            results.append(expect(generation_meta.get("model_outputs_used") and "video_script" in generation_meta.get("model_outputs_used"), "model-driven:generation-meta-visible", json.dumps(generation_meta, ensure_ascii=False)))
+
+            full_flow_reply = wb.local_agent_reply("完整流程：模型驱动完整链路隔离测试", model_config)
+            full_flow_types = deliverable_types(full_flow_reply)
+            expected_full_flow = {"spark_card", "seed_draft", "review", "score", "prediction", "video_script", "text_pack", "static_page"}
+            results.append(expect(expected_full_flow.issubset(set(full_flow_types)), "autopilot:full-flow-generates-business-chain", str(full_flow_types)))
+            full_flow_paths = [Path(item.get("path", "")) for item in full_flow_reply.get("result", {}).get("artifacts", []) if item.get("type") in {"spark_card", "seed_draft", "review", "prediction", "video_script", "text_pack", "static_page"}]
+            full_flow_text = "\n".join(path.read_text(encoding="utf-8") for path in full_flow_paths if path.exists())
+            results.append(expect("模型驱动产物-video_script-入口判断" in full_flow_text and "模型驱动产物-spark_card-入口判断" in full_flow_text, "autopilot:full-flow-files-use-model-output", full_flow_text[:1000]))
+
+            publish_model_reply = wb.local_agent_reply(
+                "发布登记：选题：模型驱动发布登记测试，平台抖音，链接 https://v.douyin.com/model-flow，发布时间 2026-06-26 20:00",
+                model_config,
+            )
+            publish_model_paths = [Path(item.get("path", "")) for item in publish_model_reply.get("result", {}).get("artifacts", []) if item.get("type") == "publish_record"]
+            publish_model_text = publish_model_paths[0].read_text(encoding="utf-8") if publish_model_paths else ""
+            results.append(expect("模型驱动产物-publish_record-入口判断" in publish_model_text, "model-driven:publish-record-uses-model-output", publish_model_text[:800]))
+            results.append(expect("https://v.douyin.com/model-flow" in publish_model_text and "2026-06-26 20:00" in publish_model_text, "model-driven:publish-record-preserves-facts", publish_model_text[:800]))
+        finally:
+            wb.call_openai_chat = original_call_openai_chat
+
         results.append(expect(hasattr(wb.WorkbenchHandler, "safe_write"), "server:safe-write-helper-exists", "WorkbenchHandler.safe_write"))
         results.append(expect("ConnectionAbortedError" in MAIN_PATH.read_text(encoding="utf-8") and "BrokenPipeError" in MAIN_PATH.read_text(encoding="utf-8"), "server:client-disconnect-handled", "send_json/serve_file should tolerate aborted browser connections"))
 
@@ -323,6 +431,17 @@ def run() -> dict:
         forbidden_reply_tokens = ["当前阶段", "当前步骤", "本次阶段", "stage:", "stage："]
         business_summaries = [prediction.get("summary", ""), review_same_topic.get("summary", ""), score_same_topic.get("summary", "")]
         results.append(expect(not any(token in summary for summary in business_summaries for token in forbidden_reply_tokens), "formatter:no-mechanical-stage-summary", str(business_summaries)))
+        review_briefs = review_same_topic.get("result", {}).get("business_briefs", [])
+        score_briefs = score_same_topic.get("result", {}).get("business_briefs", [])
+        score_brief = next((item for item in score_briefs if item.get("type") == "score"), {})
+        review_brief = next((item for item in review_briefs if item.get("type") == "review"), {})
+        results.append(expect(review_brief.get("summary") and (review_brief.get("why") or review_brief.get("risks")), "business-brief:review-explains-value-judgment", json.dumps(review_brief, ensure_ascii=False)[:800]))
+        results.append(expect(score_brief.get("score") is not None and score_brief.get("dimensions") and score_brief.get("standards"), "business-brief:score-explains-score-and-standards", json.dumps(score_brief, ensure_ascii=False)[:1000]))
+        score_brief_text = json.dumps(score_brief, ensure_ascii=False)
+        results.append(expect("综合分" in score_same_topic.get("summary", "") and "钩子强度" in score_brief_text and "情感共鸣" in score_brief_text, "business-brief:score-visible-to-user", score_same_topic.get("summary", "") + score_brief_text[:800]))
+        prediction_briefs = prediction.get("result", {}).get("business_briefs", [])
+        prediction_brief = next((item for item in prediction_briefs if item.get("deliverable") == "prediction"), {})
+        results.append(expect("预测结论" in prediction_brief.get("content", "") and "主要风险" in prediction_brief.get("content", ""), "business-brief:prediction-visible-to-user", json.dumps(prediction_brief, ensure_ascii=False)[:1000]))
         score_route = score_same_topic.get("result", {}).get("skill_route", {})
         results.append(expect(score_route.get("skill") == "blind_score" and score_route.get("isolated_agent") is True and score_route.get("conversation_history_used") is False, "skill-route:blind-score-isolated-agent", str(score_route)))
         results.append(expect(score_route.get("prompt_file") == "blind-score.md" and score_route.get("agent_mode") == "hidden" and bool(score_route.get("hidden_agent_run_id")), "skill-route:blind-score-real-hidden-agent", str(score_route)))
@@ -371,9 +490,13 @@ def run() -> dict:
         results.append(expect(panel_ledger_after_retro.get("status") == "retrospected" and panel_ledger_after_retro.get("next_step") == "review_score_rules", "topic-panel:retrospected-status", json.dumps(panel_ledger_after_retro, ensure_ascii=False)[:800]))
 
         static_text = (APP_ROOT / "static" / "index.html").read_text(encoding="utf-8")
-        for token in ["modelStatusText", "modelTestResult", "answer_source", "demoView = false", "stage === \"chat\"", "conversationList", "newConversation", "deleteConversation", "renameConversation", "data-rename-conversation", "activeConversationId", "loadConversations", "leftWorkflowPanel", "spark-row", "spark-index", "spark-title-marquee", "spark-title-track", "spark-title-marquee-scroll", "spark-score-fixed", "topicPanel", "topicStatus", "topicNextStep", "renderTopicLedger", "topicScriptContent", "topicPredictionContent", "topicPublishContent", "topicRetroContent", "loadTopicPanel", "/api/topic"]:
+        for token in ["modelStatusText", "modelTestResult", "answer_source", "demoView = false", "stage === \"chat\"", "conversationList", "newConversation", "deleteConversation", "renameConversation", "data-rename-conversation", "activeConversationId", "loadConversations", "leftWorkflowPanel", "spark-row", "spark-index", "spark-title-marquee", "spark-title-track", "spark-title-marquee-scroll", "spark-score-fixed", "spark-delete", "data-delete-spark", "deleteSpark", "/api/inbox/", "topicPanel", "topicStatus", "topicNextStep", "renderTopicLedger", "topicScriptContent", "topicPredictionContent", "topicPublishContent", "topicRetroContent", "loadTopicPanel", "/api/topic"]:
             results.append(expect(token in static_text, f"frontend:{token}", token))
         results.append(expect("当前阶段：" not in static_text, "frontend:no-mechanical-stage-label", "当前阶段 should not be rendered in replies"))
+        results.append(expect("模型：" not in static_text and "来源：" not in static_text, "frontend:no-internal-model-note-in-chat", "chat bubbles should not expose llm_note/source diagnostics"))
+        results.append(expect('new Set(["manifest", "ledger", "llm_output"])' in static_text, "frontend:hides-technical-artifacts", "chat generated list should hide manifest/ledger/llm_output"))
+        for token in ["formatBusinessBriefs", "formatScoreBrief", "formatReviewBrief", "formatPreviewBrief", "business_briefs", "评分标准", "维度分", "发布预测结果", "值得做的理由"]:
+            results.append(expect(token in static_text, f"frontend:business-brief:{token}", token))
         results.append(expect("conversation-panel" not in static_text, "frontend:no-center-conversation-panel", "conversation management should live in the left sidebar"))
         left_anchor = static_text.find('id="leftWorkflowPanel"')
         spark_anchor = static_text.find('id="sparkBoard"')
@@ -409,7 +532,7 @@ def run() -> dict:
             prompt_text = prompt_path.read_text(encoding="utf-8")
             for token in ["需求分类", "火花/灵感", "盲打分", "预测", "拍摄", "发布", "复盘", "不要一条路走到黑", "只执行当前一步"]:
                 results.append(expect(token in prompt_text, f"prompt:contains:{token}", token))
-            forbidden_tokens = ["KK", "奉孝", "大王", "samue", "C:\\Users\\samue", "cheat-content"]
+            forbidden_tokens = ["C:\\Users\\", "/Users/", "cheat-content"]
             leaked = [token for token in forbidden_tokens if token in prompt_text]
             results.append(expect(not leaked, "prompt:no-user-specific-leaks", str(leaked)))
             system_prompt = wb.build_workflow_system_prompt(config)

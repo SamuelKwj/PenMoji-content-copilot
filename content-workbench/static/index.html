@@ -268,7 +268,9 @@
     .app {
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
-      min-height: 100vh;
+      height: 100vh;
+      min-height: 640px;
+      overflow: hidden;
     }
 
     .topbar {
@@ -344,22 +346,24 @@
 
     .workspace {
       display: grid;
-      grid-template-columns: 292px minmax(430px, 1fr) 320px;
+      grid-template-columns: clamp(236px, 18vw, 292px) minmax(420px, 1fr) clamp(280px, 23vw, 360px);
       gap: 14px;
       padding: 14px;
+      height: calc(100vh - 62px);
       min-height: 0;
+      overflow: hidden;
     }
 
     .workspace.spark-collapsed {
-      grid-template-columns: 48px minmax(430px, 1fr) 320px;
+      grid-template-columns: 48px minmax(420px, 1fr) clamp(280px, 23vw, 360px);
     }
 
     .workspace.material-collapsed {
-      grid-template-columns: 292px minmax(430px, 1fr) 48px;
+      grid-template-columns: clamp(236px, 18vw, 292px) minmax(420px, 1fr) 48px;
     }
 
     .workspace.spark-collapsed.material-collapsed {
-      grid-template-columns: 48px minmax(430px, 1fr) 48px;
+      grid-template-columns: 48px minmax(420px, 1fr) 48px;
     }
 
     .column {
@@ -368,6 +372,11 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
+      overflow: hidden;
+    }
+
+    .right-column {
+      height: 100%;
     }
 
     .panel {
@@ -378,6 +387,12 @@
       min-width: 0;
       min-height: 0;
       overflow: hidden;
+    }
+
+    .left-column .panel,
+    .right-column .panel {
+      display: flex;
+      flex-direction: column;
     }
 
     .panel-head {
@@ -423,7 +438,8 @@
       align-items: center;
       justify-content: center;
       width: 100%;
-      min-height: calc(100vh - 90px);
+      min-height: 0;
+      height: 100%;
       border: 1px solid var(--line);
       border-radius: 9px;
       background: #fffdfa;
@@ -456,6 +472,7 @@
 
     .panel-body {
       padding: 13px 14px;
+      min-height: 0;
     }
 
     .spark-board,
@@ -467,10 +484,20 @@
       overflow: auto;
     }
 
-    .spark-board { max-height: calc(100vh - 164px); }
-    .material-list { max-height: 38vh; }
-    .output-board { max-height: calc(38vh - 90px); }
-    .topic-panel-body { display: grid; gap: 10px; max-height: calc(42vh - 110px); overflow: auto; }
+    .left-workflow-body,
+    #materialPanel .panel-body,
+    #outputPanel .panel-body {
+      flex: 1 1 auto;
+      overflow: hidden;
+    }
+
+    .spark-board { flex: 1 1 auto; min-height: 0; max-height: none; }
+    .material-list { flex: 1 1 auto; min-height: 0; max-height: none; }
+    .output-board { flex: 1 1 auto; min-height: 0; max-height: none; }
+    #materialPanel { flex: 0 0 clamp(170px, 25vh, 250px); }
+    #topicPanel { flex: 1 1 0; min-height: 190px; }
+    #outputPanel { flex: 1 1 0; min-height: 170px; }
+    .topic-panel-body { display: grid; gap: 10px; flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; }
     .topic-section { border: 1px solid var(--line); border-radius: 8px; padding: 9px; background: var(--panel-soft); }
     .topic-section h3 { margin: 0 0 6px; font-size: 13px; }
     .topic-section pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 12px; line-height: 1.55; color: var(--text); max-height: 130px; overflow: auto; }
@@ -497,7 +524,7 @@
 
     .spark-row {
       display: grid;
-      grid-template-columns: 34px minmax(0, 1fr) 54px;
+      grid-template-columns: 34px minmax(0, 1fr) 54px 26px;
       align-items: center;
       gap: 6px;
       min-width: 0;
@@ -506,6 +533,23 @@
     .spark-index,
     .spark-score-fixed {
       flex: 0 0 auto;
+    }
+
+    .spark-delete {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      padding: 0;
+      font-size: 15px;
+      line-height: 1;
+      color: var(--muted);
+      background: transparent;
+    }
+
+    .spark-delete:hover {
+      color: #a33a20;
+      border-color: #e9b6a4;
+      background: #fff0ec;
     }
 
     .spark-title-marquee {
@@ -828,7 +872,8 @@
     .chat-panel {
       display: grid;
       grid-template-rows: auto minmax(0, 1fr) auto;
-      height: calc(100vh - 90px);
+      height: 100%;
+      min-height: 0;
     }
 
     .chat-log {
@@ -843,7 +888,7 @@
     }
 
     .message {
-      max-width: min(760px, 92%);
+      max-width: min(760px, 96%);
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 11px 12px;
@@ -851,6 +896,7 @@
       font-size: 14px;
       line-height: 1.65;
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
       box-shadow: 0 4px 12px rgba(31, 41, 51, .04);
     }
 
@@ -865,6 +911,11 @@
       background: #fffdfa;
     }
 
+    .message-section {
+      display: block;
+      margin-top: 8px;
+    }
+
     .message-actions {
       display: flex;
       gap: 8px;
@@ -876,6 +927,8 @@
       min-height: 30px;
       padding: 5px 9px;
       font-size: 12px;
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }
 
     .chat-input {
@@ -1111,16 +1164,58 @@
 
     @media (max-width: 1120px) {
       .workspace {
-        grid-template-columns: 260px minmax(420px, 1fr);
+        grid-template-columns: 220px minmax(360px, 1fr) 260px;
+        gap: 10px;
+        padding: 10px;
+      }
+      .workspace.spark-collapsed {
+        grid-template-columns: 48px minmax(360px, 1fr) 260px;
+      }
+      .workspace.material-collapsed {
+        grid-template-columns: 220px minmax(360px, 1fr) 48px;
+      }
+      .workspace.spark-collapsed.material-collapsed {
+        grid-template-columns: 48px minmax(360px, 1fr) 48px;
+      }
+    }
+
+    @media (max-width: 820px) {
+      .app {
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+      }
+      .workspace {
+        grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+        height: auto;
+        min-height: calc(100vh - 62px);
+        overflow: visible;
+      }
+      .workspace.spark-collapsed,
+      .workspace.material-collapsed,
+      .workspace.spark-collapsed.material-collapsed {
+        grid-template-columns: 48px minmax(0, 1fr);
       }
       .right-column {
         grid-column: 1 / -1;
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        height: auto;
+        overflow: visible;
       }
-      .material-list,
-      .output-board {
-        max-height: 360px;
+      #materialPanel,
+      #topicPanel,
+      #outputPanel {
+        min-height: 260px;
+      }
+      #materialPanel {
+        flex-basis: auto;
+      }
+      #topicPanel {
+        grid-column: 1 / -1;
+      }
+      .chat-panel {
+        height: min(720px, calc(100vh - 86px));
       }
     }
 
@@ -1137,6 +1232,7 @@
       }
       .workspace {
         grid-template-columns: 1fr;
+        min-height: 0;
       }
       .right-column {
         display: flex;
@@ -1533,13 +1629,25 @@
           const button = document.createElement("button");
           button.className = "secondary";
           button.textContent = action.label;
-          button.addEventListener("click", () => sendChat(action.prompt));
+          button.addEventListener("click", () => runMessageAction(action));
           actionBox.appendChild(button);
         });
         node.appendChild(actionBox);
       }
       $("chatLog").appendChild(node);
       $("chatLog").scrollTop = $("chatLog").scrollHeight;
+    }
+
+    async function runMessageAction(action) {
+      if (action.action === "open_file" && action.path) {
+        await openOutputFile(action.path);
+        return;
+      }
+      if (action.action === "copy_file" && action.path) {
+        await copyOutputFile(action.path);
+        return;
+      }
+      if (action.prompt) await sendChat(action.prompt);
     }
 
     function hideStarterHints() {
@@ -1603,7 +1711,7 @@
       $("chatLog").innerHTML = "";
       (conversation.messages || []).forEach((message) => {
         if (message.role === "user") addMessage("user", message.content || "");
-        if (message.role === "assistant") addMessage("agent", message.content || message.reply?.summary || "", message.reply ? replyActions(message.reply) : []);
+        if (message.role === "assistant") addMessage("agent", message.reply ? formatReply(message.reply) : (message.content || ""), message.reply ? replyActions(message.reply) : []);
       });
       if (!(conversation.messages || []).length) addMessage("agent", "这是一个空对话。直接继续说。")
       renderConversationList();
@@ -1704,27 +1812,80 @@
 
     function formatReply(reply) {
       if (reply.stage === "chat") {
-        const source = reply.result?.answer_source === "model" ? "模型生成" : "本地规则回复";
-        const note = reply.result?.llm_note ? `\n来源：${source} · ${reply.result.llm_note}` : `\n来源：${source}`;
-        return `${reply.summary}${note}`;
+        return reply.summary || "";
       }
-      const artifacts = (reply.result?.artifacts || []).filter((item) => item.type !== "manifest");
-      const generated = artifacts.map((item) => `- ${item.label}`).join("\n");
-      const llmNote = reply.result?.llm_note ? `\n模型：${reply.result.llm_note}` : "";
+      const hiddenArtifactTypes = new Set(["manifest", "ledger", "llm_output"]);
+      const artifacts = (reply.result?.artifacts || []).filter((item) => !hiddenArtifactTypes.has(item.type));
+      const generated = artifacts.map((item) => `- ${item.label}：已保存到右侧「产出看板」，也可以点下方“打开/复制”。`).join("\n");
       const next = reply.result?.next_step?.prompt ? `\n下一步：${reply.result.next_step.label}` : "";
+      const briefs = formatBusinessBriefs(reply.result?.business_briefs || []);
       if (!generated && reply.result?.options) {
         return `${reply.summary}\n\n可继续：${reply.result.options.join("、")}`;
       }
-      return `${reply.summary}${llmNote}${next}${generated ? "\n\n已生成：\n" + generated : ""}`;
+      return `${reply.summary}${briefs ? "\n\n" + briefs : ""}${next}${generated ? "\n\n已保存：\n" + generated : ""}`;
+    }
+
+    function formatBusinessBriefs(briefs) {
+      if (!Array.isArray(briefs) || !briefs.length) return "";
+      return briefs.map((brief) => {
+        if (brief.type === "score") return formatScoreBrief(brief);
+        if (brief.type === "review") return formatReviewBrief(brief);
+        if (brief.type === "preview") return formatPreviewBrief(brief);
+        return "";
+      }).filter(Boolean).join("\n\n");
+    }
+
+    function formatReviewBrief(brief) {
+      const lines = ["价值判断：", brief.summary || ""].filter(Boolean);
+      if (Array.isArray(brief.why) && brief.why.length) lines.push(`值得做的理由：${brief.why.join("；")}`);
+      if (Array.isArray(brief.risks) && brief.risks.length) lines.push(`主要风险：${brief.risks.join("；")}`);
+      if (Array.isArray(brief.next_changes) && brief.next_changes.length) lines.push(`先改这几处：${brief.next_changes.join("；")}`);
+      return lines.join("\n");
+    }
+
+    function formatScoreBrief(brief) {
+      const lines = [
+        "评分结果：",
+        `综合分：${brief.score ?? "-"} / 100`,
+        brief.selected_title ? `选用标题：${brief.selected_title}` : "",
+        brief.recommendation ? `判断：${brief.recommendation}` : "",
+      ].filter(Boolean);
+      if (Array.isArray(brief.why) && brief.why.length) lines.push(`加分理由：${brief.why.join("；")}`);
+      if (Array.isArray(brief.risks) && brief.risks.length) lines.push(`扣分点：${brief.risks.join("；")}`);
+      if (Array.isArray(brief.dimensions) && brief.dimensions.length) {
+        lines.push("维度分：");
+        brief.dimensions.forEach((item) => {
+          const label = item.label || item.key || "维度";
+          lines.push(`- ${label}：${item.score}/${item.max || 5}，${item.reason || item.standard || ""}`);
+        });
+      }
+      lines.push("完整维度和评分标准已保存到右侧文件。");
+      return lines.join("\n");
+    }
+
+    function formatPreviewBrief(brief) {
+      if (brief.deliverable === "prediction" && brief.content) {
+        return `发布预测结果：\n${brief.content}`;
+      }
+      const points = Array.isArray(brief.points) ? brief.points.filter(Boolean) : [];
+      if (!points.length) return "";
+      return [`${brief.title || "产物"}预览：`, ...points.map((item) => `- ${item}`)].join("\n");
     }
 
     function replyActions(reply) {
       if (reply.stage === "chat" && Array.isArray(reply.result?.suggested_actions)) {
         return reply.result.suggested_actions;
       }
+      const hiddenArtifactTypes = new Set(["manifest", "ledger", "llm_output"]);
+      const primaryArtifact = (reply.result?.artifacts || []).find((item) => !hiddenArtifactTypes.has(item.type));
+      const actions = [];
+      if (primaryArtifact?.path) {
+        actions.push({ label: `打开：${primaryArtifact.label}`, action: "open_file", path: primaryArtifact.path });
+        actions.push({ label: `复制：${primaryArtifact.label}`, action: "copy_file", path: primaryArtifact.path });
+      }
       const step = reply.result?.next_step;
-      if (!step?.prompt || step.label === "完成") return [];
-      return [{ label: `继续：${step.label}`, prompt: step.prompt }];
+      if (step?.prompt && step.label !== "完成") actions.push({ label: `继续：${step.label}`, prompt: step.prompt });
+      return actions;
     }
 
     function shouldShowInSparkBoard(reply) {
@@ -1886,6 +2047,7 @@
             <span class="rank-badge spark-index">#${index + 1}</span>
             <div class="spark-title spark-title-marquee"><span class="spark-title-track">${escapeHtml(content)}</span></div>
             <button class="score-pill spark-score-fixed ${evaluation.state === "pending" ? "pending" : ""}" type="button" data-score-spark ${isScoring ? "disabled" : ""}>${escapeHtml(isScoring ? "评分中" : evaluation.label)}</button>
+            <button class="secondary spark-delete" type="button" title="删除火花" aria-label="删除火花" data-delete-spark>&times;</button>
           </div>
           <button class="secondary detail-toggle" type="button" data-toggle-details>${isExpanded ? "收起" : "详情"}</button>
           <div class="spark-details">
@@ -1899,6 +2061,10 @@
         node.querySelector("[data-score-spark]").addEventListener("click", async (event) => {
           event.stopPropagation();
           await mosmoriScoreSpark(item, item.selected_title || "");
+        });
+        node.querySelector("[data-delete-spark]").addEventListener("click", async (event) => {
+          event.stopPropagation();
+          await deleteSpark(item);
         });
         node.querySelector("[data-toggle-details]").addEventListener("click", (event) => {
           event.stopPropagation();
@@ -1922,6 +2088,31 @@
         });
         board.appendChild(node);
       });
+    }
+
+    async function deleteSpark(item) {
+      const key = sparkKey(item);
+      const content = item.content || item.media_url || "这个火花";
+      const ok = window.confirm(`删除这个火花？\n\n${content}\n\n已生成的选题产物不会被删除。`);
+      if (!ok) return;
+      try {
+        if (item.id && !String(item.id).startsWith("local-")) {
+          await api(`/api/inbox/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+        }
+        localSparks = localSparks.filter((spark) => sparkKey(spark) !== key);
+        inboxItems = inboxItems.filter((spark) => sparkKey(spark) !== key && spark.id !== item.id);
+        expandedSparkIds.delete(key);
+        scoringSparkIds.delete(key);
+        if (activeOutputContext?.sparkKey === key || activeOutputContext?.inboxId === item.id) {
+          activeOutputContext = null;
+          renderOutputBoard();
+        }
+        renderSparkBoard();
+        renderMaterialList();
+        showToast("火花已删除，已生成产物保留");
+      } catch (error) {
+        setStatus(`删除火花失败：${error.message}`, false);
+      }
     }
 
     function focusOutputsForSpark(item, options = {}) {
@@ -2596,7 +2787,7 @@
       } catch (error) {
         setModelStatus("模型连接失败", false);
         setModelTestResult(`连接失败 · ${error.message}`, false);
-        setStatus(`模型测试失败：${error.message}`, false);
+        setStatus("模型测试失败，详情见设置面板", false);
       }
     }
 

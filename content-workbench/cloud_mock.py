@@ -308,13 +308,27 @@ class CloudMockHandler(BaseHTTPRequestHandler):
         print(f"[{timestamp}] {self.address_string()} {fmt % args}")
 
 
+class StrictThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+    allow_reuse_port = False
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Content Workbench cloud mock")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
     args = parser.parse_args()
     ensure_data_dir()
-    server = ThreadingHTTPServer((args.host, args.port), CloudMockHandler)
+    try:
+        server = StrictThreadingHTTPServer((args.host, args.port), CloudMockHandler)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 10048 or getattr(exc, "errno", None) in {48, 98, 10048}:
+            print(
+                f"Port {args.port} is already in use on {args.host}. "
+                "Close the existing PenMoji cloud mock process or start with --port <free-port>."
+            )
+            raise SystemExit(2) from exc
+        raise
     print(f"Content Workbench Cloud Mock {CLOUD_VERSION} running at http://{args.host}:{args.port}")
     try:
         server.serve_forever()

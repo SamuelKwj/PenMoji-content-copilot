@@ -11,16 +11,12 @@ def is_empty_collect_request(text: str) -> bool:
     cleaned = text.strip()
     return bool(re.fullmatch(r"(固化|收录|整理|保存)(这个)?(灵感|火花|想法)?[:：\s]*", cleaned))
 
-def is_empty_collect_request(text: str) -> bool:
-    cleaned = text.strip()
-    return bool(re.fullmatch(r"(固化|收录|整理|保存)(这个)?(灵感|火花|想法)?[:：\s]*", cleaned))
-
 
 def is_confirm_collect(text: str) -> bool:
     return bool(re.search(r"^(确认收录|就这个|收录吧|可以收录|确定收录|确认|好了|可以了|好了吗|可以了吗|收录好了吗)", text.strip()))
 
 
-def strip_collect_prefix(content: str) -> str:
+def clean_spark_core(content: str) -> str:
     core = strip_collect_prefix(content)
     core = re.sub(r"^(就是|感觉|我发现|我觉得|我认为|其实|现在|如今)[，,\s]*", "", core)
     core = re.sub(r"[。！？?]+$", "", core).strip()

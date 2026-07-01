@@ -30,7 +30,7 @@
 - Python 3.10+
 - Node.js 18+
 - 微信开发者工具
-- 当前仓库路径：`C:\Users\samue\Documents\内容生产agent`
+- 当前仓库路径：仓库根目录
 
 默认端口：
 
@@ -44,7 +44,7 @@
 测试前确认当前版本和回滚点：
 
 ```powershell
-cd C:\Users\samue\Documents\内容生产agent
+cd <repo-root>
 git status --short --branch
 git rev-parse --short HEAD
 git tag --list before-penmoji-device-binding
@@ -63,10 +63,10 @@ git tag --list before-penmoji-device-binding
 ```powershell
 python -m py_compile content-workbench\main.py content-workbench\cloud_mock.py content-workbench\tools\mosmori_compliance_tests.py
 node --check mobile-miniapp\pages\index\index.js
-node -e "for (const f of ['mobile-miniapp/app.json','mobile-miniapp/pages/index/index.json','mobile-miniapp/project.config.json','mobile-miniapp/project.private.config.json']) { const s=require('fs').readFileSync(f,'utf8').replace(/^\uFEFF/,''); JSON.parse(s); } console.log('json ok')"
+node -e "for (const f of ['mobile-miniapp/app.json','mobile-miniapp/pages/index/index.json','mobile-miniapp/project.config.json','mobile-miniapp/project.private.config.example.json']) { const s=require('fs').readFileSync(f,'utf8').replace(/^\uFEFF/,''); JSON.parse(s); } console.log('json ok')"
 python content-workbench\tools\mosmori_compliance_tests.py
 git diff --check -- mobile-miniapp content-workbench\cloud_mock.py content-workbench\main.py content-workbench\docs\mobile-cloud-contract.md content-workbench\static\index.html task_plan.md findings.md progress.md
-git diff -- mobile-miniapp\project.config.json mobile-miniapp\project.private.config.json
+git diff -- mobile-miniapp\project.config.json mobile-miniapp\project.private.config.example.json
 ```
 
 期望：
@@ -74,16 +74,16 @@ git diff -- mobile-miniapp\project.config.json mobile-miniapp\project.private.co
 - Python 编译无错误。
 - 小程序 JS 无语法错误。
 - JSON 检查输出 `json ok`。
-- 合规测试输出 `passed: 27`、`failed: []`。
+- 合规测试输出 `status: pass`、`failed: []`。
 - `git diff --check` 没有空白错误；Windows 换行 warning 可忽略。
-- 两个小程序 project config 没有 diff。
+- 小程序公开 project config 不包含个人 appid，private config 只保留 example 文件。
 
 ## 5. 启动本地同步服务
 
 打开第一个 PowerShell：
 
 ```powershell
-cd C:\Users\samue\Documents\内容生产agent\content-workbench
+cd <repo-root>\content-workbench
 python cloud_mock.py --host 127.0.0.1 --port 8787
 ```
 
@@ -106,7 +106,7 @@ http://127.0.0.1:8787/api/status
 打开第二个 PowerShell：
 
 ```powershell
-cd C:\Users\samue\Documents\内容生产agent\content-workbench
+cd <repo-root>\content-workbench
 python main.py --host 127.0.0.1 --port 7870
 ```
 
@@ -149,7 +149,7 @@ http://127.0.0.1:8787
 在微信开发者工具中导入：
 
 ```text
-C:\Users\samue\Documents\内容生产agent\mobile-miniapp
+<repo-root>\mobile-miniapp
 ```
 
 本地开发建议：

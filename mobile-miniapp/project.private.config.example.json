@@ -1,0 +1,9 @@
+{
+  "libVersion": "3.16.1",
+  "projectname": "mobile-miniapp",
+  "condition": {},
+  "setting": {
+    "urlCheck": false,
+    "compileHotReLoad": true
+  }
+}

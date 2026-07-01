@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import urllib.error
 import urllib.request
 
@@ -39,6 +40,16 @@ def call_openai_chat_completion(messages: list[dict], config: dict, temperature:
         detail = f"HTTP {exc.code}"
         if error_body:
             detail += f" {error_body[:300]}"
-        return "", f"LLM 调用失败：{detail}。"
-    except (urllib.error.URLError, TimeoutError, KeyError, IndexError, json.JSONDecodeError) as exc:
-        return "", f"LLM 调用失败：{exc}。"
+        return "", f"模型接口返回错误：{detail}。请检查模型名、API Key、额度或服务商地址。"
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", exc)
+        reason_text = str(reason)
+        if "10061" in reason_text or "actively refused" in reason_text.lower() or "积极拒绝" in reason_text:
+            return "", f"模型接口连不上：{base_url} 没有可用服务在响应。通常是本地模型/代理服务没启动，或 API Base URL 端口填错。"
+        if isinstance(reason, TimeoutError) or "timed out" in reason_text.lower():
+            return "", f"模型接口连接超时：{base_url} 响应太慢或网络不可达。请检查网络、代理和 API Base URL。"
+        return "", f"模型接口连不上：{reason_text}。请检查 API Base URL、网络或本地模型服务。"
+    except socket.timeout:
+        return "", f"模型接口连接超时：{base_url} 响应太慢或网络不可达。"
+    except (TimeoutError, KeyError, IndexError, json.JSONDecodeError) as exc:
+        return "", f"模型返回内容不可用：{exc}。请检查模型是否兼容 OpenAI chat/completions 格式。"
