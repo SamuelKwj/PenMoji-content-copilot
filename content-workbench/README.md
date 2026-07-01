@@ -16,6 +16,17 @@
 
 ## 启动
 
+运行要求：
+
+- Python 3.10 或更高版本
+- 当前无第三方 Python 依赖
+
+如果从仓库根目录启动，可先执行：
+
+```powershell
+pip install -r requirements.txt
+```
+
 ```powershell
 cd content-workbench
 python main.py --host 127.0.0.1 --port 7870

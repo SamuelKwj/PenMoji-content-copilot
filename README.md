@@ -22,11 +22,24 @@ PenMoji 是 Mosmori 出品的本地优先内容创作工作台，连接桌面工
 ```text
 content-workbench/       桌面工作台、本地 API 服务、本地同步服务和测试文档
 mobile-miniapp/          微信小程序灵感采集端
+requirements.txt         Python 依赖清单；当前无第三方依赖
 LICENSE                  开源许可证
 SECURITY.md              安全和敏感信息说明
 ```
 
+## 运行要求
+
+- Python 3.10 或更高版本
+- 微信开发者工具（仅小程序端需要）
+- 当前桌面端不依赖第三方 Python 包；`requirements.txt` 仅用于说明和兼容常见安装流程。
+
 ## 桌面工作台启动
+
+可选：先执行依赖安装命令，当前不会安装额外包：
+
+```powershell
+pip install -r requirements.txt
+```
 
 ```powershell
 cd content-workbench
