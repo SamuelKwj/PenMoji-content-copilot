@@ -30,13 +30,22 @@ PenMoji 把这些环节收进一个本地可控的工作台，让创作者能围
 
 ![PenMoji 桌面内容工作台](docs/desktop-workbench.png)
 
-### 火花评分看板
+### 火花评分看板与小程序灵感采集
 
-![PenMoji 火花评分看板](docs/spark-board.png)
-
-### 小程序灵感采集
-
-![PenMoji 小程序灵感采集](docs/mobile-capture.jpg)
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/spark-board.png" alt="PenMoji 火花评分看板" width="280" />
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/mobile-capture.jpg" alt="PenMoji 小程序灵感采集" width="220" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center">火花评分看板</td>
+    <td align="center">小程序灵感采集</td>
+  </tr>
+</table>
 
 ## 适合谁
 
@@ -217,6 +226,14 @@ python content-workbench\tools\mosmori_compliance_tests.py
 - 不要提交 API Key、授权 token、微信密钥或本地用户数据。
 - 不要提交 `%USERPROFILE%\.content-workbench` 和 `%USERPROFILE%\.content-workbench-cloud`。
 - 微信开发者工具的个人配置请放在 `mobile-miniapp/project.private.config.json`，该文件已被 `.gitignore` 忽略；仓库只保留 `project.private.config.example.json`。
+
+## 作者
+
+Created by **请叫我奉孝大人**
+
+- GitHub: [SamuelKwj](https://github.com/SamuelKwj)
+- Douyin: `52168570433`
+- Related project: [PenMoji Content Copilot](https://github.com/SamuelKwj/PenMoji-content-copilot)
 
 ## GitHub Description
 
