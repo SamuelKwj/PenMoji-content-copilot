@@ -68,33 +68,14 @@ PenMoji 把这些环节收进一个本地可控的工作台，让创作者能围
 ## 业务流程
 
 ```mermaid
-flowchart TB
-    subgraph R1["采集与同步"]
-        direction LR
-        A["创作者产生灵感"] --> B["小程序快速采集"] --> C["本地同步服务接收"] --> D["桌面工作台拉取灵感"]
-    end
-
-    subgraph R2["评分与决策"]
-        direction RL
-        E["进入火花看板"] --> F["选题评分与筛选"] --> G{"是否继续生产？"}
-        G -- "否" --> H["归档 / 暂存"]
-    end
-
-    subgraph R3["内容生产"]
-        direction LR
-        I["进入生产流程"] --> J["生成审稿意见"] --> K["生成视频脚本"] --> L["生成发布文案"]
-    end
-
-    subgraph R4["发布与复盘"]
-        direction RL
-        M["整理素材与输出"] --> N["人工确认修改"] --> O["发布到平台"] --> P["登记数据"] --> Q["复盘表现"]
-    end
-
-    D --> E
-    G -- "是" --> I
-    L --> M
-    Q --> R["总结有效规律"]
-    R -. "反哺下一轮选题" .-> F
+flowchart LR
+    A["产生灵感"] --> B["小程序采集"] --> C["本地同步"] --> D["桌面拉取"]
+    D --> E["火花看板"] --> F["评分筛选"] --> G{"继续生产？"}
+    G -- "否" --> H["归档 / 暂存"]
+    G -- "是" --> I["审稿意见"] --> J["视频脚本"] --> K["发布文案"]
+    K --> L["整理素材"] --> M["人工确认"] --> N["发布平台"] --> O["登记数据"] --> P["复盘表现"]
+    P --> R["总结规律"]
+    R -. "反哺选题" .-> F
 
     classDef idea fill:#fff4cc,stroke:#d99a00,color:#3d2b00,stroke-width:1px;
     classDef sync fill:#dff7ff,stroke:#118ab2,color:#053047,stroke-width:1px;
@@ -108,9 +89,9 @@ flowchart TB
     class C,D sync;
     class E,F,H score;
     class G decision;
-    class I,J,K,L,M produce;
-    class N,O,P publish;
-    class Q,R review;
+    class I,J,K,L produce;
+    class M,N,O publish;
+    class P,R review;
 ```
 
 ## 项目结构
